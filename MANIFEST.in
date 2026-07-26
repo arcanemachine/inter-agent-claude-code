@@ -1,0 +1,12 @@
+include README.md
+include CHANGELOG.md
+include LICENSE.md
+include pyproject.toml
+include .claude-plugin/plugin.json
+include .claude-plugin/marketplace.json
+recursive-include skills/inter-agent *.md
+recursive-include skills/inter-agent/bin *
+recursive-include src/inter_agent_claude *.py *.md
+include scripts/run-checks.sh
+include scripts/validate-artifacts.py
+prune tests
