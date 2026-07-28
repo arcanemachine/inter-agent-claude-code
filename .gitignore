@@ -24,9 +24,6 @@ htmlcov/
 # Local state / env
 .env
 .env.*
-# Lockfile is re-resolved against the permanent inter-agent-core repository during
-# item 13 / prepublication (the temporary local candidate path source must not ship).
-uv.lock
 
 # Temporary Claude homes / config / state used by acceptance
 .claude-acceptance/

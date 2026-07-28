@@ -43,12 +43,12 @@ the inter-agent monorepo at its `pre-split-0.2.0` tag.
 - helper resolution precedence: `INTER_AGENT_CLAUDE_HELPER`, plugin
   `project_path`, Claude-managed venv, then `inter-agent-claude` on `PATH`.
 
-### Temporary migration state
+### Runtime dependency
 
-- `inter-agent-core` resolves from a migration-only local source staged during
-  the item-11 extraction. `uv.lock` is intentionally **not committed** while this
-  path source remains; it is regenerated and committed against the permanent
-  `inter-agent-core` repository during item 13 / prepublication cleanup.
+- Depends on `inter-agent-core` (`0.2.0`) and `websockets` (`16.0`). The
+  committed prepublication lock resolves core from the permanent core root
+  pinned in `tool.uv.sources`; extension release work removes that source and
+  re-locks against the published core package before publication.
 - managed bootstrap defaults to the standalone `inter-agent-claude-code`
   `main.zip` archive. This is a temporary pre-release floating bootstrap default;
   later release work replaces it with a tagged standalone source.
