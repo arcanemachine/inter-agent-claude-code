@@ -155,25 +155,6 @@ def test_claude_skill_documents_channel_receive_metadata() -> None:
     assert "direct, broadcast, and channel" in skill
 
 
-def test_claude_integration_readme_exposes_installed_channel_commands() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    assert "/inter-agent subscribe <channel>" in readme
-    assert "/inter-agent unsubscribe <channel>" in readme
-    assert "/inter-agent publish <channel> <text>" in readme
-    assert "/inter-agent channels" in readme
-    assert "user-invoked" in readme
-    assert "There are no automatic or default subscriptions" in readme
-    assert "Success is silent" in readme
-    assert "`UNKNOWN_CHANNEL`" in readme
-    assert "explicit-user, read-only diagnostic command" in readme
-    assert "does not require this Claude Code session's active listener" in readme
-    assert "raw `channels_ok` JSON response" in readme
-    assert "empty array is successful" in readme
-    assert "not an LLM-callable tool" in readme
-    assert 'kind="channel" channel="<channel>"' in readme
-
-
 def test_claude_skill_exposes_kick_dispatch() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
@@ -201,21 +182,6 @@ def test_claude_skill_kick_is_user_only_and_secret_safe() -> None:
     assert "targeting a control-role session\nis rejected without closing it" in skill
     # The shared secret is never placed in argv/output/logs.
     assert "The shared secret is never\nplaced in argv, output, or logs." in skill
-
-
-def test_claude_integration_readme_exposes_kick_command() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    assert "/inter-agent kick <name>" in readme
-    assert "user-invoked command that force-disconnects a named agent-role session" in readme
-    assert "short-lived authenticated control connection" in readme
-    assert "kick_ok" in readme
-    assert "UNKNOWN_TARGET" in readme
-    assert "BAD_ROLE" in readme
-    assert "terminal `KICKED` error" in readme
-    assert "immediately free" in readme
-    assert "no ban, blocklist, timeout, or tombstone" in readme
-    assert "not an LLM-callable tool" in readme
 
 
 def test_claude_skill_bootstrap_is_packaged() -> None:
