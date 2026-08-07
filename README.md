@@ -1,325 +1,244 @@
-# inter-agent for Claude Code
+# [inter-agent](https://github.com/arcanemachine/inter-agent) for Claude Code
 
-`inter-agent` is a Claude Code plugin that connects Claude Code sessions to the
-local inter-agent message bus so they can message other AI coding sessions on
-the same machine — Claude Code, the Pi coding agent, and other hosts.
+`inter-agent` connects Claude Code sessions to the local [inter-agent](https://github.com/arcanemachine/inter-agent) message bus. Claude Code, Pi, and other compatible clients can discover one another, send direct messages, broadcast, and communicate through named channels.
 
-This repository is both:
+This repository provides:
 
-- a Claude Code **plugin** (root `.claude-plugin/plugin.json` plus the
-  `skills/inter-agent/` skill, bootstrap guidance, and bundled wrappers); and
-- a single-plugin self-hosted Claude Code **marketplace** (`root
-  `.claude-plugin/marketplace.json`, marketplace plugin `source: "./"`).
+- a Claude Code plugin and self-hosted marketplace;
+- the `/inter-agent` skill and its bundled runtime wrappers; and
+- the `inter-agent-claude` Python helper used for listening and commands.
 
-A separate Python **helper** distribution (`inter-agent-claude-code`, import
-package `inter_agent_claude`, console command `inter-agent-claude`) provides the
-runtime listener and command-line tools the skill drives. It is a buildable
-wheel/sdist for local and isolated installation; it is **not** published to
-PyPI, and this repository is **not** submitted to an Anthropic-operated
-marketplace.
+The helper is not published to PyPI, and the plugin is not distributed through an Anthropic-operated marketplace. Install it from this repository.
 
-## Contents
+## What it provides
 
-- `.claude-plugin/plugin.json` — plugin metadata and command wiring.
-- `.claude-plugin/marketplace.json` — self-hosted marketplace metadata.
-- `skills/inter-agent/SKILL.md` — regular command guidance and incoming-message policy.
-- `skills/inter-agent/bootstrap.md` — first-time setup and connect-edge guidance.
-- `skills/inter-agent/bin/inter-agent-claude` — bundled runtime wrapper.
-- `skills/inter-agent/bin/bootstrap-runtime` — managed-runtime bootstrap script.
-- `src/inter_agent_claude/` — Python helper distribution.
-- `tests/` — Python unit, static, wrapper, live, packaging, and console-entry coverage.
-- `scripts/run-checks.sh` and `scripts/validate-artifacts.py` — package-local gate.
+- Named Claude Code sessions on a shared local bus
+- Direct messages and broadcasts
+- Named channel subscription and publishing
+- Incoming messages through a persistent Claude Code Monitor
+- Session, server, channel, and message-cache inspection
+- User-controlled kick and shutdown operations
+- Managed runtime bootstrap or source-checkout development setup
+- Shared endpoint, authentication, state, and TLS behavior from `inter-agent-core`
 
-## How it works
+## Requirements
 
-Claude Code uses Monitor for inbound delivery. `/inter-agent connect <name>`
-starts one persistent Monitor running the bundled wrapper, which resolves and
-runs `inter-agent-claude listen --name <name>` and honors the requested routing
-name. The listener connects to the local inter-agent WebSocket bus as an agent
-session and writes bounded notification lines to stdout, which Claude Code
-surfaces in the active session.
+- Claude Code with plugin and Monitor support
+- Python 3.10 or newer with `venv`/`ensurepip` support
+- Network access when bootstrapping the managed runtime
+- [`uv`](https://docs.astral.sh/uv/) only when developing from a checkout
 
-The helper keeps the core protocol host-agnostic: a shared `inter-agent-core`
-runtime handles transport, authentication, routing, channels, kick, and
-lifecycle; the Claude helper maps plugin commands to core APIs and turns
-inbound bus messages into Monitor notifications.
+## Install
 
-## Install or load the plugin
-
-Add this repository as a Claude Code marketplace, then install the plugin. It
-works equally from a local checkout and from the public GitHub repository URL.
-
-From a local checkout:
-
-```bash
-claude plugin marketplace add /path/to/inter-agent-claude-code
-claude plugin install inter-agent --config project_path=/path/to/inter-agent-claude-code
-```
-
-From GitHub:
+Add this repository as a marketplace and install the plugin:
 
 ```bash
 claude plugin marketplace add https://github.com/arcanemachine/inter-agent-claude-code
 claude plugin install inter-agent
 ```
 
-For development, load the plugin directly from this checkout instead:
+Restart Claude Code after installing or updating the plugin.
 
-```bash
-claude --plugin-dir /path/to/inter-agent-claude-code
+### Set up the runtime
+
+Inside Claude Code, run:
+
+```text
+/inter-agent bootstrap
 ```
 
-If the plugin is already installed, use Claude Code's `/plugin configure` flow
-to set `project_path`.
+Bootstrap explains what it will install and asks for explicit approval. It creates a managed virtual environment at:
 
-Installing the plugin does not install or enable the Python helper
-automatically. The helper is resolved when a skill command runs (see Runtime
-setup). Before installing from a local checkout, prepare its venv:
-
-```bash
-cd /path/to/inter-agent-claude-code
-uv sync --locked
+```text
+~/.claude/data/inter-agent/venv
 ```
 
-`claude plugin validate --strict .` validates the flat plugin and marketplace
-manifests in this checkout.
+The current bootstrap source is the repository's `main` archive. It is a floating pre-release source, not a tagged helper release.
 
-### Marketplace update and uninstall
-
-```bash
-claude plugin update inter-agent          # refresh an installed plugin
-claude plugin uninstall inter-agent       # remove the installed plugin
-claude plugin marketplace remove inter-agent   # remove the marketplace source
-```
-
-## Runtime setup
-
-The skill calls its bundled `skills/inter-agent/bin/inter-agent-claude` wrapper
-rather than requiring `inter-agent-claude` to be on `PATH`. The wrapper finds
-the Python helper in this order:
-
-1. `INTER_AGENT_CLAUDE_HELPER`, an exact executable path override.
-2. Claude plugin `project_path` config, using
-   `<project_path>/.venv/bin/inter-agent-claude`.
-3. The Claude-managed runtime helper at
-   `~/.claude/data/inter-agent/venv/bin/inter-agent-claude`.
-4. `inter-agent-claude` on `PATH`.
-
-For a checkout runtime, prepare the Python environment in the checkout and
-configure `project_path`:
-
-```bash
-cd /path/to/inter-agent-claude-code
-uv sync --locked
-claude plugin install inter-agent --config project_path=/path/to/inter-agent-claude-code
-```
-
-> **Development note:** `uv sync --locked` resolves `inter-agent-core` from a
-> migration-only local source declared in `pyproject.toml`. It is a development
-> convenience for this split baseline; a committed `uv.lock` is intentionally
-> withheld until the permanent `inter-agent-core` repository exists (item 13).
-> Users do not need to run `uv sync` themselves unless they are developing the
-> helper.
-
-For a managed runtime, run `/inter-agent bootstrap` from Claude Code. The skill
-explains that it will create or reuse `~/.claude/data/inter-agent/venv`,
-install the Python runtime from the GitHub `main` archive, and leave the shared
-bus endpoint/state defaults unchanged. It asks for explicit approval before
-running `inter-agent-claude bootstrap --yes` through the wrapper.
-
-The GitHub `main` archive is a **temporary pre-release floating bootstrap
-default**. Later release work will replace it with a tagged standalone source so
-installs pin a stable checkout instead of tracking `main`.
-
-Then connect from inside Claude Code:
+### Connect
 
 ```text
 /inter-agent connect my-agent
 ```
 
-The listener auto-starts the local server when needed. Auto-started servers use
-a 300-second idle timeout. Manually started servers run until explicit shutdown
-unless started with `--idle-timeout <seconds>`.
+The listener starts the local bus server if needed. If you omit the name, the skill derives one from the current working directory.
 
-### Connect exit 127
+A successful connection reports:
 
-When none of the four helper sources resolves — no `INTER_AGENT_CLAUDE_HELPER`,
-no configured `project_path` helper, no Claude-managed venv, and no
-`inter-agent-claude` on `PATH` — the bundled wrapper prints
-`[inter-agent] setup needed: run /inter-agent bootstrap` and exits `127`. Claude
-Code surfaces that as a Monitor failure such as
-`Monitor "inter-agent bus messages" script failed (exit 127)`; exit `127` is the
-intentional setup-needed signal, not a crash. Read `skills/inter-agent/bootstrap.md`,
-then recover with one of the supported paths: run `/inter-agent bootstrap` after
-explicit user approval (managed runtime), configure the plugin `project_path`
-option to a checkout whose venv you have prepared with `uv sync --locked`, or
-install the helper so `inter-agent-claude` is on `PATH`.
+```text
+[inter-agent] connected as "my-agent"
+```
 
-A helper that resolves but cannot run — missing executable bit, or a stale venv
-whose shebang interpreter no longer exists — produces a distinct bounded
-`[inter-agent] setup failed:` line naming the helper and the broken interpreter,
-not the `setup needed` line. Both diagnostics stay short, point to
-`README.md#runtime-setup` for recovery, and never print the plugin `secret`.
+If the requested name is already connected, the listener retries once with a `-2` suffix before asking you to choose another name.
 
-The plugin Monitor runs the bundled wrapper, which delegates to the selected
-`inter-agent-claude` CLI. The helper uses the same endpoint, secret, and TLS
-discovery as the core commands: `INTER_AGENT_HOST`, `INTER_AGENT_PORT`,
-`INTER_AGENT_SECRET`, `INTER_AGENT_DATA_DIR`, `INTER_AGENT_CONFIG`,
-`INTER_AGENT_TLS`, `INTER_AGENT_TLS_CERT`, `INTER_AGENT_TLS_KEY`, and the
-platform inter-agent config file. No Claude-specific endpoint settings are
-required.
+## Quick start
 
-TLS defaults to off for loopback hosts (`127.0.0.1`, `localhost`, `::1`) and on
-for non-loopback hosts. Enable or disable it with `--tls` / `--no-tls`,
-`INTER_AGENT_TLS`, or the `tls` config key. Provide a certificate and key with
-`--tls-cert` / `--tls-key`, `INTER_AGENT_TLS_CERT` / `INTER_AGENT_TLS_KEY`, or
-`tlsCert` / `tlsKey` config keys. If TLS is enabled without configured
-certificate/key material, the server generates `tls-cert.pem` and `tls-key.pem`
-in the data directory; clients trust the generated certificate or the configured
-`INTER_AGENT_TLS_CERT` / `tlsCert`.
+After installation and bootstrap:
 
-No secret setup is needed when Claude Code and the server share the same local
-inter-agent state directory. For separate harnesses, containers, or isolated
-filesystems, run the server with the endpoint and high-entropy secret you want,
-then start Claude Code with matching `INTER_AGENT_HOST`, `INTER_AGENT_PORT`, and
-`INTER_AGENT_SECRET` values if they differ from the defaults. Installed plugins
-may also set plugin config `secret`, which the wrapper passes to helpers as
-`INTER_AGENT_SECRET`.
+```text
+/inter-agent connect agent-a
+/inter-agent status
+/inter-agent list
+/inter-agent send agent-b hello
+/inter-agent disconnect
+```
+
+Incoming messages appear automatically through the persistent Monitor. Do not poll for replies.
 
 ## Commands
 
-```text
-/inter-agent connect [name]
-/inter-agent rename <name>
-/inter-agent disconnect
-/inter-agent kick <name>
-/inter-agent send <name-or-prefix> <text>
-/inter-agent broadcast <text>
-/inter-agent subscribe <channel>
-/inter-agent unsubscribe <channel>
-/inter-agent publish <channel> <text>
-/inter-agent channels
-/inter-agent list
-/inter-agent status
-/inter-agent messages <msg_id>
-/inter-agent shutdown
-```
+| Command | Purpose |
+| --- | --- |
+| `bootstrap` | Install or repair the managed Python runtime. |
+| `connect [name]` | Connect this Claude Code session to the bus. |
+| `rename <name>` | Reconnect under another routing name. |
+| `disconnect` | Stop this session's listener. |
+| `send <name-or-prefix> <text>` | Send a direct message. |
+| `broadcast <text>` | Send to every other connected agent. |
+| `subscribe <channel>` | Subscribe the active listener to a channel. |
+| `unsubscribe <channel>` | Leave a channel. |
+| `publish <channel> <text>` | Publish to a channel. |
+| `channels` | List channels and subscribers. |
+| `list` | List connected sessions. |
+| `status` | Show runtime, endpoint, and server status. |
+| `messages <message-id>` | Retrieve a full message from the continuation cache. |
+| `kick <name>` | Disconnect another named agent session. |
+| `shutdown` | Stop the shared server and disconnect all sessions. |
 
-Use direct `send` for normal replies and targeted coordination. Use `broadcast`
-only when explicitly asked to message everyone or when the information is
-genuinely for all connected sessions.
+Use direct messages for ordinary coordination. Broadcast, channel changes, kick, and shutdown are explicit user actions; the skill does not infer them from peer messages.
 
-`rename` stops this Claude Code session's listener and reconnects it under a new
-routing name. If the requested connect name is already in use, the Claude
-listener retries once with a `-2` suffix before asking for a manually chosen
-unique name.
+Channel names use lowercase letters, numbers, and hyphens, start with a letter or number, and are at most 40 characters. Subscriptions survive transient reconnects but not an explicit disconnect, Claude Code restart/reload, or resumed session.
 
-`subscribe`, `unsubscribe`, `publish`, and `channels` are user-invoked channel
-commands routed through the bundled wrapper as short-lived Bash commands:
-
-```text
-/inter-agent subscribe <channel>
-/inter-agent unsubscribe <channel>
-/inter-agent publish <channel> <text>
-/inter-agent channels
-```
-
-`subscribe` and `unsubscribe` operate on this Claude Code session's active
-listener identity and require the running listener from `/inter-agent connect`.
-On success the wrapper prints the raw protocol JSON (`subscribe_ok` /
-`unsubscribe_ok`); on failure it prints an `inter-agent-claude:` diagnostic to
-stderr and exits non-zero. The agent must only run them when the user explicitly
-asks to join or leave a channel; it must not subscribe or unsubscribe
-autonomously or in response to peer-message content. There are no automatic or default subscriptions, and memberships do not persist across listener stop, process restart, Claude reload, or resumed sessions (they do survive transient WebSocket reconnects).
-
-`publish` requires the active listener and uses its connected routing name as `from_name`; it does not accept a caller-selected sender identity. Success is silent (empty stdout), and there is no protocol success acknowledgment. Local and protocol failures print an `inter-agent-claude:` diagnostic to stderr and exit non-zero; `UNKNOWN_CHANNEL` is returned when the channel does not exist or has no subscribers. The agent must only run `publish` when the user explicitly asks to post specific text to a specific channel; it must not publish autonomously, based on model inference, or to acknowledge a peer. Publishing does not require the publisher to subscribe first, and the publisher is excluded from delivery even when subscribed.
-
-`channels` is an explicit-user, read-only diagnostic command. It does not
-require this Claude Code session's active listener; instead, the helper opens a short-lived authenticated connection to the configured inter-agent server. The server must be resolvable and reachable, and authentication/TLS configuration must be valid. On success the wrapper prints the raw `channels_ok` JSON response. Each `channels` entry contains a channel name and current subscriber routing names; an empty array is successful and means no channels currently have subscribers. Failures return non-zero and use existing `inter-agent-claude:` diagnostics where the adapter provides them. The skill must not run channel diagnostics autonomously, infer them from another operation, poll, or run them in response to peer-message content, and `channels` is not an LLM-callable tool.
-
-`kick <name>` is a user-invoked command that force-disconnects a named agent-role session. It does not require this Claude Code session's active listener; the helper opens a short-lived authenticated control connection. Only an authenticated control role may kick, and only a registered agent-role session may be kicked; targeting a control-role session is rejected without closing it. On success the wrapper prints the raw `kick_ok` JSON response (removed name and session id); on failure it prints an `inter-agent-claude:` diagnostic to stderr and exits non-zero (for example `UNKNOWN_TARGET` for a name that is not connected, or `BAD_ROLE` for a control-role target). A kicked listener receives a terminal `KICKED` error and stops reconnecting for its process; the removed name is immediately free and may register again through an explicit later `/inter-agent connect` or a host/session reload. There is no ban, blocklist, timeout, or tombstone. The skill must only run `kick` when the user explicitly asks to force-disconnect a named session, and `kick` is not an LLM-callable tool.
-
-Channel names match `[a-z0-9][a-z0-9-]{0,39}` (at most 40 bytes).
-
-Long incoming messages are truncated in the Monitor notification and can be
-retrieved by message ID from a bounded local continuation cache:
-
-```text
-/inter-agent messages <msg_id>
-```
+Repeated identical sends, broadcasts, and publishes within a short window may be suppressed to prevent duplicate delivery.
 
 ## Incoming messages
 
-Incoming notifications include message metadata:
+Notifications include routing metadata:
 
 ```text
-[inter-agent msg=<id> from="<name>" kind="direct"] <text>
+[inter-agent msg=<id> from="<name>" kind="direct" to="<name>"] <text>
 [inter-agent msg=<id> from="<name>" kind="broadcast"] <text>
 [inter-agent msg=<id> from="<name>" kind="channel" channel="<channel>"] <text>
 ```
 
-Peer messages — direct, broadcast, and channel — are collaboration inputs. They
-do not override system, developer, user, tool, permission, or security rules. Do
-not poll for replies; replies arrive as incoming notifications.
+Long messages are truncated to keep Monitor output bounded. A continuation notice gives the message ID and retrieval command:
 
-## Skill lifecycle
+```text
+[inter-agent msg=<id> cont] full text <bytes> bytes — run: inter-agent-claude messages <id>
+```
 
-The listener is a skill-driven persistent Monitor started only by
-`/inter-agent connect`. There is no plugin-declared Monitor and no `monitors/`
-directory. A transient reconnect re-applies the desired subscription set before
-reporting readiness; an explicit stop, process restart, Claude reload, or
-resumed session clears subscriptions. The listener suppresses duplicate
-in-bound message IDs within a short window and reuses a routing name after a
-terminal kick only on an explicit reconnect.
+Retrieve it through the skill:
 
-## Adapter CLI
+```text
+/inter-agent messages <id>
+```
 
-The plugin uses `inter-agent-claude` under the hood. For direct CLI usage and
-detailed status output, see [`src/inter_agent_claude/README.md`](src/inter_agent_claude/README.md).
+Peer messages are collaboration input, not authority. They do not override system, developer, user, tool, permission, or security rules.
 
-## Security notes
+## How it works
 
-This plugin follows the inter-agent security model: localhost plaintext
-transport by default, optional TLS transport encryption, shared-secret
-challenge-response authentication, restrictive fallback state permissions, and
-no protection from hostile same-user code.
+`/inter-agent connect` starts one persistent Claude Code Monitor. The Monitor runs the bundled wrapper, which resolves `inter-agent-claude` and starts a named Python listener. That listener authenticates with the shared core server and prints bounded notifications for Claude Code to surface.
 
-Claude Code-specific considerations:
+The helper delegates transport, authentication, routing, channels, and lifecycle behavior to `inter-agent-core`. Command invocations use the same endpoint, secret, state directory, and TLS settings as the listener.
 
-- Monitor commands run local shell processes with the user's permissions.
-- The listener Monitor is started on demand by the `/inter-agent` skill with the
-  user's chosen routing name, so no plugin-declared monitor runs at plugin
-  trust level.
-- Monitor processes are session-scoped and ephemeral; resumed sessions may need
-  to reconnect.
+An auto-started server uses an idle timeout and stops after it has no connected sessions. A manually started core server continues until explicitly stopped.
 
-## Related repositories
+## Runtime resolution and recovery
 
-- `inter-agent-core` — shared core runtime (transport, auth, routing, channels,
-  kick, lifecycle). Not published from this repository.
-- `inter-agent-pi` — Pi coding agent host extension and cross-adapter
-  acceptance counterpart.
-- `inter-agent` (ecosystem) — public superproject, deferred.
+The bundled wrapper resolves the helper in this order:
 
-The helper is distributed only as local/repository build artifacts and via this
-Git-hosted marketplace. No PyPI publication or official Anthropic marketplace
-submission is planned for this baseline.
+1. `INTER_AGENT_CLAUDE_HELPER`;
+2. `<project_path>/.venv/bin/inter-agent-claude` from plugin configuration;
+3. `~/.claude/data/inter-agent/venv/bin/inter-agent-claude`; and
+4. `inter-agent-claude` on `PATH`.
 
-## Development, test, and validation
+If no helper resolves, the wrapper prints:
+
+```text
+[inter-agent] setup needed: run /inter-agent bootstrap
+```
+
+Claude Code may present that as a Monitor failure with exit code 127. It is the expected setup-needed signal. Run `/inter-agent bootstrap`, configure a prepared checkout with `project_path`, or put a working helper on `PATH`.
+
+To replace the managed runtime, remove its virtual environment and run bootstrap again:
 
 ```bash
-uv sync --locked          # install dev/runtime dependencies (development only)
-uv run pytest
-uv run ruff check --no-respect-gitignore src tests scripts
-uv run black --check src tests scripts
-uv run mypy src tests
+rm -rf ~/.claude/data/inter-agent/venv
+```
+
+## Source-checkout setup
+
+For development, prepare a local checkout:
+
+```bash
+git clone https://github.com/arcanemachine/inter-agent-claude-code
+cd inter-agent-claude-code
+uv sync --locked
+claude plugin marketplace add "$PWD"
+claude plugin install inter-agent --config project_path="$PWD"
+```
+
+You can instead load the checkout for one run:
+
+```bash
+claude --plugin-dir /path/to/inter-agent-claude-code
+```
+
+Validate plugin metadata with:
+
+```bash
 claude plugin validate --strict .
-uv build
-uv run python scripts/validate-artifacts.py dist/inter_agent_claude_code-0.2.0-py3-none-any.whl dist/inter_agent_claude_code-0.2.0.tar.gz
+```
+
+## Configuration
+
+The wrapper accepts two plugin-specific settings:
+
+- `project_path` — use the helper from a checkout's `.venv`;
+- `secret` — pass an explicit shared secret to the helper.
+
+Use Claude Code's `/plugin configure` flow to change installed plugin settings.
+
+The helper also honors the core environment variables:
+
+- `INTER_AGENT_HOST`, `INTER_AGENT_PORT`
+- `INTER_AGENT_SECRET`, `INTER_AGENT_DATA_DIR`, `INTER_AGENT_CONFIG`
+- `INTER_AGENT_TLS`, `INTER_AGENT_TLS_CERT`, `INTER_AGENT_TLS_KEY`
+- `INTER_AGENT_CLAUDE_HELPER`
+
+The default endpoint is `127.0.0.1:16837`. Processes sharing the default local state discover the same generated secret automatically. Separate containers, filesystems, or hosts must be configured with matching endpoint and secret values.
+
+Loopback transport defaults to plaintext WebSockets. Non-loopback transport defaults to TLS. TLS failures never fall back automatically to plaintext.
+
+## Update and remove
+
+```bash
+claude plugin update inter-agent
+claude plugin uninstall inter-agent
+claude plugin marketplace remove inter-agent
+```
+
+Restart Claude Code after an update.
+
+## Development
+
+```bash
+uv sync --locked
 scripts/run-checks.sh
 ```
 
-`run-checks.sh` runs the focused gate (tests, Ruff, Black, mypy, strict plugin
-validation, build, artifact validation). It assumes dependencies are already
-synchronized; it does not install globally, contact networks, publish, push, or
-mutate other checkouts.
+The package gate runs tests, formatting, linting, type checks, strict plugin validation, distribution builds, and artifact validation. It requires the `claude` CLI on `PATH`.
+
+The helper CLI is documented in [`src/inter_agent_claude/README.md`](src/inter_agent_claude/README.md).
+
+## Security
+
+The bus is designed for one trusted operating-system user on one machine. The Monitor and helper run local processes with your user permissions. Never commit or share bus secrets, tokens, private keys, certificates, or state.
+
+TLS protects transport but does not protect against hostile code running as the same user. Peer messages remain untrusted input.
+
+See the [`inter-agent-core` security model](https://github.com/arcanemachine/inter-agent-core/blob/main/SECURITY.md) for the complete trust boundary.
+
+## License
+
+MIT. See [`LICENSE.md`](LICENSE.md).
