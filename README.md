@@ -16,7 +16,7 @@ This repository provides the `inter-agent` Claude Code plugin and marketplace, t
 Add the released tagged repository as a marketplace and install its `inter-agent` plugin:
 
 ```bash
-claude plugin marketplace add https://github.com/arcanemachine/inter-agent-claude-code#inter-agent--v0.2.1
+claude plugin marketplace add https://github.com/arcanemachine/inter-agent-claude-code
 claude plugin install inter-agent
 ```
 
@@ -28,11 +28,7 @@ Inside Claude Code, run:
 /inter-agent bootstrap
 ```
 
-Bootstrap explains the installation and asks for explicit approval. It creates the managed environment at `~/.claude/data/inter-agent/venv` and installs the helper runtime from the tagged standalone archive:
-
-```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.0.zip
-```
+Bootstrap explains the installation and asks for explicit approval. It creates the managed environment at `~/.claude/data/inter-agent/venv` and installs the helper runtime from the tagged standalone source selected by the plugin release. See [`skills/inter-agent/bootstrap.md`](skills/inter-agent/bootstrap.md) for the source and recovery details.
 
 The helper command is `inter-agent-claude`. The plugin's normal managed flow does not require a PyPI package or a local source checkout.
 
