@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+Stable-source follow-up release for the Claude Code plugin. The plugin version
+is `0.2.1`; the Python helper remains `inter-agent-claude-code` `0.2.0`.
+
+- The managed bootstrap default remains pinned to the tagged standalone
+  `inter-agent--v0.2.0` archive.
+- The plugin and marketplace manifests now publish as `0.2.1`, allowing the
+  stable-source fix to ship without retagging the published `0.2.0` release.
+
 ## 0.2.0
 
 Clean standalone baseline for the inter-agent Claude Code extension, split from
