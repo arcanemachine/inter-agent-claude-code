@@ -53,7 +53,13 @@ Bootstrap explains what it will install and asks for explicit approval. It creat
 ~/.claude/data/inter-agent/venv
 ```
 
-The current bootstrap source is the repository's `main` archive. It is a floating pre-release source, not a tagged helper release.
+The managed bootstrap source is the tagged standalone `inter-agent--v0.2.0` archive:
+
+```text
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.0.zip
+```
+
+This pins the helper runtime to the released Claude extension source.
 
 ### Connect
 

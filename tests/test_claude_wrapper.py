@@ -162,13 +162,16 @@ def test_claude_wrapper_bootstrap_requires_yes(tmp_path: Path) -> None:
     assert "[inter-agent] setup approval required" in result.stderr
 
 
-def test_claude_bootstrap_source_uses_github_main_archive() -> None:
+def test_claude_bootstrap_source_uses_tagged_archive() -> None:
     script = BOOTSTRAP.read_text(encoding="utf-8")
 
     expected_bootstrap_url = (
-        "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/heads/main.zip"
+        "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/"
+        "inter-agent--v0.2.0.zip"
     )
     assert expected_bootstrap_url in script
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in script
+    assert "--source" in script
     assert "--yes" in script
     assert "Python 3.10+ not found" in script
 

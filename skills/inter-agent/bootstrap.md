@@ -56,23 +56,21 @@ normal inter-agent defaults unless explicitly configured otherwise:
 platform inter-agent state directory
 ```
 
-The current bootstrap source is the standalone inter-agent-claude-code
-GitHub `main` archive:
+The managed bootstrap source is the tagged standalone
+inter-agent-claude-code `inter-agent--v0.2.0` archive:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/heads/main.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.0.zip
 ```
 
-This is a temporary pre-release floating bootstrap default. Later release
-work will replace it with a tagged standalone source so installs pin a stable
-checkout instead of tracking `main`.
+This pins the helper runtime to the released Claude extension source.
 
 ### Approval gate
 
 Do not install anything silently. When setup is needed, tell the user:
 
 - destination: `~/.claude/data/inter-agent/venv`;
-- source: the GitHub archive above;
+- source: the tagged standalone GitHub archive above;
 - requirement: Python 3.10+ with `venv` support;
 - bus endpoint/secret discovery: unchanged shared inter-agent defaults.
 
@@ -83,7 +81,9 @@ Ask for explicit approval. Only after the user approves, run:
 ```
 
 The script requires `--yes`; without it, it exits with an approval-required
-message.
+message. For development, pass an explicit `--source URL_OR_PATH` or set
+`INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE`; these overrides do not change the stable
+default above.
 
 ### Failure messages
 

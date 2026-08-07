@@ -49,9 +49,9 @@ the inter-agent monorepo at its `pre-split-0.2.0` tag.
   committed prepublication lock resolves core from the permanent core root
   pinned in `tool.uv.sources`; extension release work removes that source and
   re-locks against the published core package before publication.
-- managed bootstrap defaults to the standalone `inter-agent-claude-code`
-  `main.zip` archive. This is a temporary pre-release floating bootstrap default;
-  later release work replaces it with a tagged standalone source.
+- managed bootstrap defaults to the tagged standalone
+  `inter-agent-claude-code` `inter-agent--v0.2.0` archive, pinning the helper
+  runtime to the released Claude extension source.
 
 ### Not published
 

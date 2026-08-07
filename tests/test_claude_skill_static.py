@@ -23,7 +23,9 @@ def test_claude_skill_references_bootstrap_guidance() -> None:
     assert "/inter-agent bootstrap" in skill
     assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in bootstrap
     assert "~/.claude/data/inter-agent/venv" in bootstrap
-    assert "refs/heads/main.zip" in bootstrap
+    assert "refs/tags/inter-agent--v0.2.0.zip" in bootstrap
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in bootstrap
+    assert "--source" in bootstrap
     assert "--yes" in bootstrap
 
 
