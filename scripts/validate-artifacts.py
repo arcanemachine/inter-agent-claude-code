@@ -15,8 +15,8 @@ import zipfile
 from pathlib import Path
 
 EXPECTED_NAME = "inter-agent-claude-code"
-EXPECTED_VERSION = "0.2.0"
-EXPECTED_CORE_DEP = "inter-agent-core==0.2.0"
+EXPECTED_VERSION = "0.3.0"
+EXPECTED_CORE_DEP = "inter-agent-core==0.3.0"
 EXPECTED_WS_DEP = "websockets==16.0"
 
 SHARE_ROOT = "share/inter-agent-claude-code"
@@ -39,6 +39,21 @@ FORBIDDEN_FRAGMENTS = (
     "uv.lock",
     ".venv/",
 )
+
+
+def validate_core_dependency(metadata: str, artifact: str) -> None:
+    expected = f"Requires-Dist: {EXPECTED_CORE_DEP}"
+    core_lines = [
+        line
+        for line in metadata.splitlines()
+        if line.startswith("Requires-Dist: ")
+        and line.partition(": ")[2].lower().startswith("inter-agent-core")
+    ]
+    if core_lines != [expected]:
+        fail(f"{artifact} core dependency metadata not exactly {expected!r}: {core_lines!r}")
+    for bad in ("file://", "../../tmp", "git+", " @ ", "direct_url"):
+        if any(bad in line for line in core_lines):
+            fail(f"{artifact} core dependency contains forbidden string {bad!r}")
 
 
 def fail(msg: str) -> None:
@@ -67,13 +82,13 @@ def validate_wheel(whl: Path) -> None:
         fail(f"wheel Name not {EXPECTED_NAME!r}")
     if f"Version: {EXPECTED_VERSION}" not in meta:
         fail(f"wheel Version not {EXPECTED_VERSION!r}")
-    if EXPECTED_CORE_DEP not in meta:
-        fail(f"wheel missing Requires-Dist {EXPECTED_CORE_DEP!r}")
+    validate_core_dependency(meta, "wheel")
     if EXPECTED_WS_DEP not in meta:
         fail(f"wheel missing Requires-Dist {EXPECTED_WS_DEP!r}")
     for bad in (
         "file://",
         "../../tmp",
+        "git+",
         "Requires-Dist: inter-agent ==",
         "Requires-Dist: inter-agent==",
     ):
@@ -118,6 +133,16 @@ def validate_sdist(sdist: Path) -> None:
         fail(f"sdist Name not {EXPECTED_NAME!r}")
     if f"Version: {EXPECTED_VERSION}" not in body:
         fail(f"sdist Version not {EXPECTED_VERSION!r}")
+    validate_core_dependency(body, "sdist")
+    for bad in (
+        "file://",
+        "../../tmp",
+        "git+",
+        "Requires-Dist: inter-agent ==",
+        "Requires-Dist: inter-agent==",
+    ):
+        if bad in body:
+            fail(f"sdist metadata contains forbidden string {bad!r}")
     if not any(n.endswith("inter_agent_claude/__init__.py") for n in names):
         fail("sdist has no inter_agent_claude source")
 

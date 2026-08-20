@@ -31,7 +31,7 @@ rm -rf dist && uv build
 
 echo "== artifact validation =="
 WHL=$(ls dist/inter_agent_claude_code-*.whl)
-SDIST=$(ls dist/inter_agent_claude_code-0.2.0.tar.gz)
+SDIST=$(ls dist/inter_agent_claude_code-0.3.0.tar.gz)
 uv run python scripts/validate-artifacts.py "$WHL" "$SDIST"
 
 echo "== run-checks OK =="

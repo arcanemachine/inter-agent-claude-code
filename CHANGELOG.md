@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+Prepublication source compatibility alignment for the Claude Code Python helper.
+
+- The helper distribution is `inter-agent-claude-code` `0.3.0` with an exact
+  `inter-agent-core==0.3.0` runtime dependency.
+- Development resolution pins the accepted Core source revision while built
+  artifacts retain registry-only dependency metadata.
+
 ## 0.2.1
 
 Stable-source follow-up release for the Claude Code plugin. The plugin version
