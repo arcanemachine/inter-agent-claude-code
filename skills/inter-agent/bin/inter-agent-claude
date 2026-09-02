@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-DOCS="README.md#runtime-setup"
+DOCS="README.md#recovery-and-configuration"
 MANAGED_VENV="${INTER_AGENT_CLAUDE_VENV:-$HOME/.claude/data/inter-agent/venv}"
 MANAGED_HELPER="$MANAGED_VENV/bin/inter-agent-claude"
 

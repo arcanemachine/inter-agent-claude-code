@@ -2,7 +2,7 @@
 
 [`inter-agent-claude-code`](https://github.com/arcanemachine/inter-agent-claude-code) connects Claude Code sessions to the local [inter-agent](https://github.com/arcanemachine/inter-agent) message bus.
 
-This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI.
+This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.2` provisions helper source `0.3.0` from the matching `inter-agent--v0.2.2` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Inside Claude Code, run:
 /inter-agent bootstrap
 ```
 
-Bootstrap explains the installation and asks for explicit approval. It creates the managed environment at `~/.claude/data/inter-agent/venv` and installs the helper runtime from the tagged standalone source selected by the plugin release. See [`skills/inter-agent/bootstrap.md`](skills/inter-agent/bootstrap.md) for the source and recovery details.
+Bootstrap explains the installation and asks for explicit approval. It creates the managed environment at `~/.claude/data/inter-agent/venv` and installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by the plugin release. See [`skills/inter-agent/bootstrap.md`](skills/inter-agent/bootstrap.md) for the source and recovery details.
 
 The helper command is `inter-agent-claude`. The plugin's normal managed flow does not require a PyPI package or a local source checkout.
 
@@ -82,7 +82,7 @@ The detailed helper command reference is [`src/inter_agent_claude/README.md`](sr
 
 ## Recovery and configuration
 
-If the wrapper exits `127` with setup needed, run `/inter-agent bootstrap` after approval. If the managed environment is missing or stale, remove `~/.claude/data/inter-agent/venv` and bootstrap again. A configured `project_path` or `INTER_AGENT_CLAUDE_HELPER` is a development or troubleshooting override, not the normal installation path.
+If the wrapper exits `127` with setup needed, run `/inter-agent bootstrap` after approval. If the managed environment is missing or stale, remove only `~/.claude/data/inter-agent/venv` and bootstrap again; this does not remove the bus state directory or unread messages. A configured `project_path` or `INTER_AGENT_CLAUDE_HELPER` is a development or troubleshooting override, not the normal installation path.
 
 If authentication fails, ensure every process uses the same endpoint, state directory, and shared secret. If a name is already in use, the listener retries once with a `-2` suffix; otherwise choose a unique name and reconnect. The default endpoint is `127.0.0.1:16837`, and local processes discover the same generated secret from shared state. Loopback transport defaults to plaintext WebSockets; non-loopback transport defaults to TLS, with no automatic downgrade.
 

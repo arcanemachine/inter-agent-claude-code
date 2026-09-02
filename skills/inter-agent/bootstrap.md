@@ -47,7 +47,7 @@ Bootstrap creates an isolated runtime venv at:
 ~/.claude/data/inter-agent/venv
 ```
 
-It installs the inter-agent Python package into that venv and does not change
+It installs the `inter-agent-claude-code` `0.3.0` helper into that venv and does not change
 the bus endpoint or secret discovery. Claude, Pi, and other hosts still use the
 normal inter-agent defaults unless explicitly configured otherwise:
 
@@ -57,13 +57,15 @@ platform inter-agent state directory
 ```
 
 The managed bootstrap source is the tagged standalone
-inter-agent-claude-code `inter-agent--v0.2.0` archive:
+inter-agent-claude-code `inter-agent--v0.2.2` archive:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.0.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.2.zip
 ```
 
-This pins the helper runtime to the released Claude extension source.
+This plugin release provisions helper source `0.3.0` from that archive. The
+helper remains Git-hosted and installs the released `inter-agent-core==0.3.0`
+dependency from PyPI; no separate Claude helper PyPI package is required.
 
 ### Approval gate
 
@@ -90,7 +92,7 @@ default above.
 Keep user-facing failures short and point to runtime setup docs, for example:
 
 ```text
-[inter-agent] setup failed: Python 3.10+ not found. See README.md#runtime-setup
+[inter-agent] setup failed: Python 3.10+ not found. See README.md#recovery-and-configuration
 ```
 
 Common failures:

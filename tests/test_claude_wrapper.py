@@ -151,7 +151,7 @@ def test_claude_wrapper_reports_setup_needed_when_no_runtime_exists(tmp_path: Pa
     assert result.returncode == 127
     assert result.stdout == ""
     assert "[inter-agent] setup needed: run /inter-agent bootstrap" in result.stderr
-    assert "README.md#runtime-setup" in result.stderr
+    assert "README.md#recovery-and-configuration" in result.stderr
 
 
 def test_claude_wrapper_bootstrap_requires_yes(tmp_path: Path) -> None:
@@ -167,7 +167,7 @@ def test_claude_bootstrap_source_uses_tagged_archive() -> None:
 
     expected_bootstrap_url = (
         "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/"
-        "inter-agent--v0.2.0.zip"
+        "inter-agent--v0.2.2.zip"
     )
     assert expected_bootstrap_url in script
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in script
@@ -278,7 +278,7 @@ def test_claude_wrapper_env_helper_not_executable_fails_bounded(tmp_path: Path) 
     assert result.stdout == ""
     assert "[inter-agent] setup failed:" in result.stderr
     assert "helper from INTER_AGENT_CLAUDE_HELPER not executable" in result.stderr
-    assert "README.md#runtime-setup" in result.stderr
+    assert "README.md#recovery-and-configuration" in result.stderr
     assert "setup needed" not in result.stderr
 
 
@@ -297,7 +297,7 @@ def test_claude_wrapper_env_helper_broken_interpreter_fails_bounded(tmp_path: Pa
     assert "[inter-agent] setup failed:" in result.stderr
     assert "INTER_AGENT_CLAUDE_HELPER interpreter not executable" in result.stderr
     assert "/no/such/interpreter" in result.stderr
-    assert "README.md#runtime-setup" in result.stderr
+    assert "README.md#recovery-and-configuration" in result.stderr
     # The bounded wrapper diagnostic must replace a raw shell exec error.
     assert "cannot execute" not in result.stderr
     assert "setup needed" not in result.stderr

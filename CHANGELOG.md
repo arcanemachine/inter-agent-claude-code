@@ -9,6 +9,17 @@ Prepublication source compatibility alignment for the Claude Code Python helper.
 - Development resolution pins the accepted Core source revision while built
   artifacts retain registry-only dependency metadata.
 
+## 0.2.2
+
+Claude Code plugin and marketplace release with the current managed helper
+source.
+
+- The plugin and marketplace manifests publish as `0.2.2`.
+- Managed bootstrap defaults to the tagged standalone
+  `inter-agent--v0.2.2` archive, whose helper source is `0.3.0` and whose
+  released Core dependency is `0.3.0`.
+- The helper remains Git-hosted rather than separately published to PyPI.
+
 ## 0.2.1
 
 Stable-source follow-up release for the Claude Code plugin. The plugin version
