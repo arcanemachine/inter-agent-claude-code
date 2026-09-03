@@ -2,7 +2,7 @@
 
 [`inter-agent-claude-code`](https://github.com/arcanemachine/inter-agent-claude-code) connects Claude Code sessions to the local [inter-agent](https://github.com/arcanemachine/inter-agent) message bus.
 
-This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.2` provisions helper source `0.3.0` from the matching `inter-agent--v0.2.2` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
+This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.3` provisions helper source `0.3.0` from the matching `inter-agent--v0.2.3` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
 
 ## Requirements
 

@@ -167,7 +167,7 @@ def test_claude_bootstrap_source_uses_tagged_archive() -> None:
 
     expected_bootstrap_url = (
         "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/"
-        "inter-agent--v0.2.2.zip"
+        "inter-agent--v0.2.3.zip"
     )
     assert expected_bootstrap_url in script
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in script

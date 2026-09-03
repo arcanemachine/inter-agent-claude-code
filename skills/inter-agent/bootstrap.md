@@ -18,7 +18,7 @@ order:
    `~/.claude/data/inter-agent/venv/bin/inter-agent-claude`.
 4. `inter-agent-claude` on PATH.
 
-If plugin config provides `secret`, the wrapper exports it as `INTER_AGENT_SECRET` before running the selected helper. If no helper resolves, the wrapper prints `[inter-agent] setup needed: run /inter-agent bootstrap` and exits `127` — the setup-needed signal Claude Code renders as `Monitor "..." script failed (exit 127)`. Recover by running `/inter-agent bootstrap` after approval, by configuring `project_path` to a prepared checkout, or by installing `inter-agent` so `inter-agent-claude` is on `PATH`. If a helper resolves but cannot run (not executable, or a stale venv whose shebang interpreter no longer exists), the wrapper instead prints a bounded `[inter-agent] setup failed:` line naming the helper or broken interpreter; reprepare that runtime rather than guessing alternate commands. Do not print the `secret`.
+If plugin config provides `secret`, the wrapper exports it as `INTER_AGENT_SECRET` before running the selected helper. If no helper resolves, the wrapper prints `[inter-agent] setup needed: run /inter-agent bootstrap` and exits `127` — the setup-needed signal Claude Code renders as `Monitor "..." script failed (exit 127)`. Recover by running `/inter-agent bootstrap` after approval, by configuring `project_path` to a prepared checkout, or by installing the `inter-agent-claude` helper so it is on `PATH`. If a helper resolves but cannot run (not executable, or a stale venv whose shebang interpreter no longer exists), the wrapper instead prints a bounded `[inter-agent] setup failed:` line naming the helper or broken interpreter; reprepare that runtime rather than guessing alternate commands. Do not print the `secret`.
 
 ## Configure a local checkout
 
@@ -26,14 +26,14 @@ For development or a custom local core checkout, configure the installed plugin
 `project_path` option to the checkout path, then prepare its venv:
 
 ```bash
-cd /path/to/inter-agent
+cd /path/to/inter-agent-claude-code
 uv sync --locked
 ```
 
 The wrapper expects this helper:
 
 ```text
-/path/to/inter-agent/.venv/bin/inter-agent-claude
+/path/to/inter-agent-claude-code/.venv/bin/inter-agent-claude
 ```
 
 For one-off debugging, `INTER_AGENT_CLAUDE_HELPER=/path/to/inter-agent-claude`
@@ -57,10 +57,10 @@ platform inter-agent state directory
 ```
 
 The managed bootstrap source is the tagged standalone
-inter-agent-claude-code `inter-agent--v0.2.2` archive:
+inter-agent-claude-code `inter-agent--v0.2.3` archive:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.2.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.3.zip
 ```
 
 This plugin release provisions helper source `0.3.0` from that archive. The

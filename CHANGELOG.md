@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3
+
+Documentation correction release for the Claude Code plugin and marketplace.
+
+- The plugin and marketplace manifests publish as `0.2.3`.
+- Managed bootstrap defaults to the matching `inter-agent--v0.2.3` archive while
+  retaining helper source `0.3.0` and Core dependency `0.3.0`.
+- Development guidance names the standalone `inter-agent-claude-code` checkout
+  and the `inter-agent-claude` helper executable.
+
 ## 0.3.0
 
 Prepublication source compatibility alignment for the Claude Code Python helper.

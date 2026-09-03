@@ -82,7 +82,7 @@ read `bootstrap.md`, ask for explicit user approval, and run the bootstrap only
 with `--yes` after approval. Claude Code renders that exit `127` as
 `Monitor "inter-agent bus messages" script failed (exit 127)`; it is the
 setup-needed signal — recover with `/inter-agent bootstrap` after approval, a
-configured `project_path`, or `inter-agent` on `PATH`. A bounded
+configured `project_path`, or `inter-agent-claude` on `PATH`. A bounded
 `[inter-agent] setup failed:` line instead names a helper that resolved but
 could not run (missing executable bit or a stale venv interpreter). Only if the
 persistent Monitor exits without a connected/already-connected line, read
