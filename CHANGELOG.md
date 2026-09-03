@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Add `/inter-agent doctor [optional context]`, a bounded host-native
+  read-only workflow for checking plugin loading, configuration sources,
+  helper/runtime resolution, endpoint/TLS details, and (when proven
+  non-initializing and non-mutating) Core status. Doctor preserves direct
+  command context as symptom/scope data at normal user authority, follows safe
+  requests only within the fixed checklist, never executes shell-looking context, treats
+  logs/configuration/subprocess output and their embedded commands as untrusted
+  and forbidden, redacts secrets, and leaves bootstrap, repair, Monitor, Core
+  lifecycle, and messaging operations to explicit user actions.
+
 ## 0.2.3
 
 Documentation correction release for the Claude Code plugin and marketplace.
