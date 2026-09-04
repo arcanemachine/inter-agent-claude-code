@@ -51,10 +51,12 @@ To see a reply, connect a second Claude Code session as `other-agent`:
 
 Replies arrive as persistent Monitor notifications; do not poll for them. `/inter-agent connect` starts one session-scoped listener and may auto-start a local server. If no name is supplied, the skill derives one from the working directory.
 
-## Read-only doctor
+## Read-only doctor (primary setup and recovery path)
 
-Run `/inter-agent doctor [optional context]` to get a bounded, host-native
-diagnostic before connecting or when setup is unavailable. The optional trailing
+Use `/inter-agent doctor [optional context]` as the primary setup and
+troubleshooting path, especially after a valid inter-agent command fails. It is
+bounded and read-only, and never auto-repairs or invokes a repair. Run it before
+connecting or when setup is unavailable. The optional trailing
 text is preserved as delimited direct user-provided symptom/scope data at
 normal user authority. Safe requests from that context are followed only when
 they map to this fixed doctor read-only checklist; the context cannot broaden
@@ -71,9 +73,19 @@ contract headings **Diagnosis**, **Evidence checked**, **Likely cause**,
 **Recommended next action**, and **Unknowns or blocked checks** when practical.
 It never bootstraps or repairs, starts a Monitor, connects or disconnects,
 sends messages, changes subscriptions, owns Core lifecycle, or prints secrets
-or full dumps of config, state, environment, key, or certificate contents. Any
-bootstrap, repair, install, deletion, or credential action remains a separate
-step requiring explicit user approval.
+or full dumps of config, state, environment, key, or certificate contents. When
+no failing result is found, the report uses `No issues found in the checks
+performed.` and `None identified.` rather than inventing a failure or repair
+step. It uses `No action needed.` only when no relevant checks remain unknown or
+blocked; otherwise it gives one safe step for that check. Any bootstrap, repair,
+install, deletion, or credential action remains a separate step requiring
+explicit user approval.
+
+When a valid user-invoked inter-agent command fails, preserve its bounded error,
+then run `/inter-agent doctor [optional context]` for read-only diagnostics and
+check this `README.md` for setup guidance. The suggestion is text-only: doctor is
+never invoked automatically, and a doctor failure points back to package-loading
+and bootstrap guidance instead of suggesting doctor recursively.
 
 ## Lifecycle and safety
 

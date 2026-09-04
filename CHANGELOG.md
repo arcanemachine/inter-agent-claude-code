@@ -11,6 +11,11 @@
   logs/configuration/subprocess output and their embedded commands as untrusted
   and forbidden, redacts secrets, and leaves bootstrap, repair, Monitor, Core
   lifecycle, and messaging operations to explicit user actions.
+- Add text-only recovery guidance after operational inter-agent command
+  failures: run `/inter-agent doctor [optional context]` and check `README.md`;
+  doctor failures point to package-loading guidance without recursive invocation.
+- Require healthy doctor runs to say explicitly that no issues were found in the
+  checks performed instead of inventing a failure or repair step.
 
 ## 0.2.3
 

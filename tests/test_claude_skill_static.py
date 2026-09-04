@@ -186,6 +186,35 @@ def test_claude_skill_kick_is_user_only_and_secret_safe() -> None:
     assert "The shared secret is never\nplaced in argv, output, or logs." in skill
 
 
+def test_claude_skill_exposes_failure_recovery_guidance() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme_prose = " ".join(readme.split())
+    skill_prose = " ".join(skill.split())
+    recovery = skill.split("## Failure recovery", 1)[1].split("## doctor", 1)[0]
+    prose = " ".join(recovery.split())
+
+    assert "/inter-agent doctor [optional context]" in recovery
+    assert "/inter-agent doctor [optional context]" in readme
+    assert "primary setup and troubleshooting path" in readme_prose
+    assert "bounded and read-only" in readme_prose
+    assert "never auto-repairs" in readme_prose
+    assert "No issues found in the checks performed." in readme_prose
+    assert "None identified." in readme_prose
+    assert "No action needed." in readme_prose
+    assert "check this extension's `README.md`" in prose
+    assert "preserve the existing bounded diagnostic" in prose
+    assert "do not invoke doctor automatically" in prose
+    assert "Do not add this pointer to usage errors, cancelled commands" in prose
+    assert "do not suggest doctor recursively" in prose
+    assert "package-loading/bootstrap guidance" in prose
+    assert "interpolate raw output into a command" in prose
+    assert "expose secrets" in prose
+    assert "No issues found in the checks performed." in skill_prose
+    assert "None identified." in skill_prose
+    assert "No action needed." in skill_prose
+
+
 def test_claude_skill_exposes_read_only_doctor_workflow() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     doctor = skill.split("## doctor", 1)[1].split(

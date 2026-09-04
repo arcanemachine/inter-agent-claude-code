@@ -103,6 +103,21 @@ for explicit user approval. After approval, run:
 
 Then retry the user's requested `/inter-agent` command.
 
+## Failure recovery
+
+When a user-invoked inter-agent command fails operationally after its input is
+valid — for example, the wrapper exits non-zero, a Monitor fails, or a response
+is malformed — preserve the existing bounded diagnostic and tell the user to
+run `/inter-agent doctor [optional context]` for bounded diagnostics and check
+this extension's `README.md` for setup guidance. This is a text-only recovery
+pointer: do not invoke doctor automatically, replace the original diagnostic,
+interpolate raw output into a command, or expose secrets.
+
+Do not add this pointer to usage errors, cancelled commands, successful results,
+or empty successful results. If `/inter-agent doctor` itself fails, do not
+suggest doctor recursively; tell the user to check this extension's `README.md`
+and its package-loading/bootstrap guidance instead.
+
 ## doctor
 
 `/inter-agent doctor [optional context]` is a user-invoked, host-native,
@@ -230,6 +245,15 @@ approval.
 ## Unknowns or blocked checks
 Checks that could not be inspected and why.
 ```
+
+When no failing result is found, use **Diagnosis** exactly as `No issues found
+in the checks performed.` and **Likely cause** exactly as `None identified.` Do
+not invent a failing layer or a repair step. If no relevant checks remain
+unknown or blocked, use **Recommended next action** exactly as `No action needed.`
+Otherwise give one safe step that addresses the unknown or blocked check. Keep
+genuinely skipped or unverified checks in **Unknowns or blocked checks**. A
+passing local check does not prove security, trustworthiness, or end-to-end
+message delivery.
 
 ## send / broadcast / list / status / messages / disconnect
 
