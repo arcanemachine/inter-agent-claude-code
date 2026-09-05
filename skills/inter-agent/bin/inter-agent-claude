@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DOCS="README.md#recovery-and-configuration"
 MANAGED_VENV="${INTER_AGENT_CLAUDE_VENV:-$HOME/.claude/data/inter-agent/venv}"
-MANAGED_HELPER="$MANAGED_VENV/bin/inter-agent-claude"
 
 expand_path() {
   local value="$1"
@@ -15,19 +14,73 @@ expand_path() {
   esac
 }
 
-fail() {
-  printf '[inter-agent] setup failed: %s. See %s\n' "$1" "$DOCS" >&2
-  exit "${2:-127}"
+MANAGED_VENV="$(expand_path "$MANAGED_VENV")"
+MANAGED_HELPER="$MANAGED_VENV/bin/inter-agent-claude"
+
+bounded_value() {
+  local value="$1"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//$'\t'/ }"
+  if (( ${#value} > 256 )); then
+    printf '%s...%s' "${value:0:64}" "${value: -160}"
+  else
+    printf '%s' "$value"
+  fi
 }
 
-# A selected helper may pass the executable-bit check yet still fail to exec when
-# its shebang interpreter is gone (a stale or relocated venv). Catch that before
-# exec so the failure is a bounded [inter-agent] setup-failed line instead of a
-# raw shell error and a bare exit 127 that looks like setup-needed.
+usage() {
+  cat <<'EOF'
+Usage: inter-agent-claude <command> [options]
+
+Commands:
+  setup --yes [--source URL_OR_PATH] [--venv PATH] [--python PATH]
+      Create or repair the Claude-managed runtime after explicit approval.
+  <other command> ...
+      Delegate to the resolved inter-agent-claude helper.
+
+Runtime resolution order: explicit helper, configured project checkout,
+Claude-managed venv, then inter-agent-claude on PATH.
+EOF
+}
+
+runtime_failure() {
+  local category="$1"
+  local reason="$2"
+  local remedy
+  case "$category" in
+    explicit)
+      remedy="Fix or remove INTER_AGENT_CLAUDE_HELPER; /inter-agent setup does not modify overrides."
+      ;;
+    project)
+      remedy="Fix or remove the configured project_path; /inter-agent setup does not modify overrides."
+      ;;
+    managed)
+      remedy="Run /inter-agent setup to repair the Claude-managed runtime."
+      ;;
+    path)
+      remedy="Fix or remove the PATH helper, or run /inter-agent setup for the managed runtime."
+      ;;
+    *)
+      remedy="Run /inter-agent doctor for bounded diagnostics."
+      ;;
+  esac
+  printf '[inter-agent] runtime unavailable (%s): %s %s See %s\n' \
+    "$category" "$(bounded_value "$reason")" "$remedy" "$DOCS"
+  exit 4
+}
+
+HELPER_REASON=""
 verify_helper() {
   local helper="$1"
   local label="$2"
   local shebang rest interp
+
+  if [[ ! -f "$helper" || -L "$helper" || ! -x "$helper" || -d "$helper" ]]; then
+    HELPER_REASON="$label helper is not a regular executable file: $(bounded_value "$helper")"
+    return 1
+  fi
+
   shebang="$(head -n1 "$helper" 2>/dev/null || true)"
   case "$shebang" in
     '#!'*)
@@ -35,13 +88,19 @@ verify_helper() {
       rest="${rest#"${rest%%[![:space:]]*}"}"
       interp="${rest%%[[:space:]]*}"
       if [[ -z "$interp" || ! -x "$interp" || -d "$interp" ]]; then
-        fail "$label interpreter not executable: $interp (in $helper)"
+        HELPER_REASON="$label interpreter not executable: $(bounded_value "$interp") (in $(bounded_value "$helper"))"
+        return 1
       fi
       ;;
   esac
 }
 
-if [[ "${1:-}" == "bootstrap" ]]; then
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ "${1:-}" == "setup" ]]; then
   shift
   exec "$SCRIPT_DIR/bootstrap-runtime" "$@"
 fi
@@ -52,33 +111,39 @@ fi
 
 if [[ -n "${INTER_AGENT_CLAUDE_HELPER:-}" ]]; then
   helper="$(expand_path "$INTER_AGENT_CLAUDE_HELPER")"
-  if [[ ! -x "$helper" || -d "$helper" ]]; then
-    fail "helper from INTER_AGENT_CLAUDE_HELPER not executable: $helper"
+  if ! verify_helper "$helper" "INTER_AGENT_CLAUDE_HELPER"; then
+    runtime_failure explicit "$HELPER_REASON"
   fi
-  verify_helper "$helper" "INTER_AGENT_CLAUDE_HELPER"
   exec "$helper" "$@"
 fi
 
 if [[ -n "${CLAUDE_PLUGIN_OPTION_PROJECT_PATH:-}" ]]; then
   project_path="$(expand_path "$CLAUDE_PLUGIN_OPTION_PROJECT_PATH")"
   helper="$project_path/.venv/bin/inter-agent-claude"
-  if [[ ! -x "$helper" || -d "$helper" ]]; then
-    fail "configured project_path helper not found: $helper"
+  if ! verify_helper "$helper" "project_path"; then
+    runtime_failure project "$HELPER_REASON"
   fi
-  verify_helper "$helper" "project_path"
   exec "$helper" "$@"
 fi
 
 if [[ -x "$MANAGED_HELPER" && ! -d "$MANAGED_HELPER" ]]; then
-  verify_helper "$MANAGED_HELPER" "managed venv"
+  if ! verify_helper "$MANAGED_HELPER" "managed venv"; then
+    runtime_failure managed "$HELPER_REASON"
+  fi
   exec "$MANAGED_HELPER" "$@"
+fi
+
+if [[ -e "$MANAGED_VENV" || -L "$MANAGED_VENV" ]]; then
+  runtime_failure managed "managed venv exists but its helper is unavailable: $(bounded_value "$MANAGED_HELPER")"
 fi
 
 path_helper="$(command -v inter-agent-claude || true)"
 if [[ -n "$path_helper" && "$path_helper" != "$SCRIPT_DIR/inter-agent-claude" ]]; then
-  verify_helper "$path_helper" "PATH"
+  if ! verify_helper "$path_helper" "PATH"; then
+    runtime_failure path "$HELPER_REASON"
+  fi
   exec "$path_helper" "$@"
 fi
 
-printf '[inter-agent] setup needed: run /inter-agent bootstrap. See %s\n' "$DOCS" >&2
-exit 127
+printf '[inter-agent] runtime missing: no usable helper found. Run /inter-agent setup. See %s\n' "$DOCS"
+exit 3

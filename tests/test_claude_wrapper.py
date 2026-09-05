@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_BIN = ROOT / "skills" / "inter-agent" / "bin"
 WRAPPER = SKILL_BIN / "inter-agent-claude"
-BOOTSTRAP = SKILL_BIN / "bootstrap-runtime"
+SETUP = SKILL_BIN / "bootstrap-runtime"
 
 #: Each entry maps a presence field name to the INTER_AGENT_* variable the
 #: fake helper inspects. The helper emits only fixed boolean eq/presence
@@ -23,12 +23,7 @@ PRESENCE_FIELDS = [
 
 
 def make_presence_helper(path: Path, expected: dict[str, str]) -> None:
-    """Write a helper that emits fixed boolean equality/presence fields only.
-
-    Each field reports whether the received ``INTER_AGENT_*`` value equals an
-    embedded expected sentinel (``NAME_eq=true/false``) and whether it is set
-    (``NAME_present=true/false``). No raw or hash-derived values are emitted.
-    """
+    """Write a helper that emits fixed boolean equality/presence fields only."""
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
@@ -75,6 +70,13 @@ def make_helper(path: Path, label: str) -> None:
     path.chmod(0o755)
 
 
+def make_broken_interpreter_helper(path: Path) -> None:
+    """An executable helper whose shebang interpreter does not exist."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/no/such/interpreter\necho should-not-run\n", encoding="utf-8")
+    path.chmod(0o755)
+
+
 def run_wrapper(
     tmp_path: Path, *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -91,6 +93,25 @@ def run_wrapper(
         text=True,
         check=False,
     )
+
+
+def test_claude_wrapper_help_is_available_without_runtime(tmp_path: Path) -> None:
+    result = run_wrapper(tmp_path, "--help")
+
+    assert result.returncode == 0
+    assert "setup --yes" in result.stdout
+    assert "bootstrap" not in result.stdout
+    assert result.stderr == ""
+
+
+def test_claude_wrapper_setup_help_is_available_without_runtime(tmp_path: Path) -> None:
+    result = run_wrapper(tmp_path, "setup", "--help")
+
+    assert result.returncode == 0
+    assert "Usage: inter-agent-claude setup --yes" in result.stdout
+    assert "--source" in result.stdout
+    assert "bootstrap" not in result.stdout.lower()
+    assert result.stderr == ""
 
 
 def test_claude_wrapper_env_helper_override_wins(tmp_path: Path) -> None:
@@ -145,35 +166,55 @@ def test_claude_wrapper_uses_managed_venv_before_path(tmp_path: Path) -> None:
     assert result.stdout == "managed:status\n"
 
 
-def test_claude_wrapper_reports_setup_needed_when_no_runtime_exists(tmp_path: Path) -> None:
+def test_claude_wrapper_reports_missing_runtime_on_stdout(tmp_path: Path) -> None:
     result = run_wrapper(tmp_path, "status")
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup needed: run /inter-agent bootstrap" in result.stderr
-    assert "README.md#recovery-and-configuration" in result.stderr
+    assert result.returncode == 3
+    assert result.stderr == ""
+    assert result.stdout.count("\n") == 1
+    assert "/inter-agent setup" in result.stdout
+    assert "README.md#recovery-and-configuration" in result.stdout
+    assert "bootstrap" not in result.stdout.lower()
+    assert len(result.stdout) <= 512
 
 
-def test_claude_wrapper_bootstrap_requires_yes(tmp_path: Path) -> None:
+def test_claude_wrapper_bootstrap_is_not_a_compatibility_alias(tmp_path: Path) -> None:
     result = run_wrapper(tmp_path, "bootstrap")
+
+    assert result.returncode == 3
+    assert "/inter-agent setup" in result.stdout
+    assert "bootstrap" not in result.stdout.lower()
+    assert result.stderr == ""
+
+
+def test_claude_setup_requires_yes(tmp_path: Path) -> None:
+    result = run_wrapper(tmp_path, "setup")
 
     assert result.returncode == 2
     assert result.stdout == ""
-    assert "[inter-agent] setup approval required" in result.stderr
+    assert "setup approval required" in result.stderr
+    assert "rerun setup with --yes" in result.stderr
+    assert not (tmp_path / "home" / ".claude" / "data" / "inter-agent" / "venv").exists()
+    assert "bootstrap" not in result.stderr.lower()
 
 
-def test_claude_bootstrap_source_uses_tagged_archive() -> None:
-    script = BOOTSTRAP.read_text(encoding="utf-8")
+def test_claude_setup_source_uses_tagged_archive_and_new_overrides() -> None:
+    script = SETUP.read_text(encoding="utf-8")
 
-    expected_bootstrap_url = (
+    expected_source = (
         "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/"
         "inter-agent--v0.2.3.zip"
     )
-    assert expected_bootstrap_url in script
-    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in script
+    assert expected_source in script
+    assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in script
+    assert "INTER_AGENT_CLAUDE_SETUP_PYTHON" in script
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in script
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_PYTHON" not in script
     assert "--source" in script
     assert "--yes" in script
     assert "Python 3.10+ not found" in script
+    assert "-m venv" in script
+    assert "-m pip" in script
 
 
 def test_claude_wrapper_passes_plugin_secret_to_helper(tmp_path: Path) -> None:
@@ -206,7 +247,7 @@ def test_claude_wrapper_forwards_channels_argument_unchanged(tmp_path: Path) -> 
     helper = project_path / ".venv" / "bin" / "inter-agent-claude"
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text(
-        "#!/usr/bin/env bash\n" "set -euo pipefail\n" "printf '%s\\n' \"$@\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$@\"\n",
         encoding="utf-8",
     )
     helper.chmod(0o755)
@@ -227,7 +268,7 @@ def test_claude_wrapper_forwards_publish_arguments_unchanged(tmp_path: Path) -> 
     helper = project_path / ".venv" / "bin" / "inter-agent-claude"
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text(
-        "#!/usr/bin/env bash\n" "set -euo pipefail\n" "printf '%s\\n' \"$@\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$@\"\n",
         encoding="utf-8",
     )
     helper.chmod(0o755)
@@ -245,28 +286,10 @@ def test_claude_wrapper_forwards_publish_arguments_unchanged(tmp_path: Path) -> 
     assert result.stderr == ""
 
 
-def make_broken_interpreter_helper(path: Path) -> None:
-    """An executable helper whose shebang interpreter does not exist."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "#!/no/such/interpreter\n" "echo should-not-run\n",
-        encoding="utf-8",
-    )
-    path.chmod(0o755)
-
-
-def test_claude_wrapper_bin_assets_are_executable() -> None:
-    """The bundled wrapper and bootstrap must ship executable."""
-    for asset in (WRAPPER, BOOTSTRAP):
-        assert asset.is_file()
-        assert asset.stat().st_mode & 0o111, f"{asset} is not executable"
-
-
 def test_claude_wrapper_env_helper_not_executable_fails_bounded(tmp_path: Path) -> None:
     helper = tmp_path / "env" / "inter-agent-claude"
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text("#!/usr/bin/env bash\necho nope\n", encoding="utf-8")
-    # Deliberately not executable.
 
     result = run_wrapper(
         tmp_path,
@@ -274,12 +297,13 @@ def test_claude_wrapper_env_helper_not_executable_fails_bounded(tmp_path: Path) 
         env={"INTER_AGENT_CLAUDE_HELPER": str(helper)},
     )
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup failed:" in result.stderr
-    assert "helper from INTER_AGENT_CLAUDE_HELPER not executable" in result.stderr
-    assert "README.md#recovery-and-configuration" in result.stderr
-    assert "setup needed" not in result.stderr
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert result.stdout.count("\n") == 1
+    assert "runtime unavailable (explicit)" in result.stdout
+    assert "INTER_AGENT_CLAUDE_HELPER" in result.stdout
+    assert "does not modify overrides" in result.stdout
+    assert "README.md#recovery-and-configuration" in result.stdout
 
 
 def test_claude_wrapper_env_helper_broken_interpreter_fails_bounded(tmp_path: Path) -> None:
@@ -292,15 +316,12 @@ def test_claude_wrapper_env_helper_broken_interpreter_fails_bounded(tmp_path: Pa
         env={"INTER_AGENT_CLAUDE_HELPER": str(helper)},
     )
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup failed:" in result.stderr
-    assert "INTER_AGENT_CLAUDE_HELPER interpreter not executable" in result.stderr
-    assert "/no/such/interpreter" in result.stderr
-    assert "README.md#recovery-and-configuration" in result.stderr
-    # The bounded wrapper diagnostic must replace a raw shell exec error.
-    assert "cannot execute" not in result.stderr
-    assert "setup needed" not in result.stderr
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert "INTER_AGENT_CLAUDE_HELPER interpreter not executable" in result.stdout
+    assert "/no/such/interpreter" in result.stdout
+    assert "README.md#recovery-and-configuration" in result.stdout
+    assert "cannot execute" not in result.stdout
 
 
 def test_claude_wrapper_project_path_helper_not_executable_fails_bounded(
@@ -310,7 +331,6 @@ def test_claude_wrapper_project_path_helper_not_executable_fails_bounded(
     helper = project_path / ".venv" / "bin" / "inter-agent-claude"
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text("#!/usr/bin/env bash\necho nope\n", encoding="utf-8")
-    # Deliberately not executable.
 
     result = run_wrapper(
         tmp_path,
@@ -318,11 +338,24 @@ def test_claude_wrapper_project_path_helper_not_executable_fails_bounded(
         env={"CLAUDE_PLUGIN_OPTION_PROJECT_PATH": str(project_path)},
     )
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup failed:" in result.stderr
-    assert "configured project_path helper not found" in result.stderr
-    assert "setup needed" not in result.stderr
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert "runtime unavailable (project)" in result.stdout
+    assert "configured project_path" in result.stdout
+    assert "does not modify overrides" in result.stdout
+
+
+def test_claude_wrapper_managed_missing_helper_is_broken_runtime(tmp_path: Path) -> None:
+    managed = tmp_path / "home" / ".claude" / "data" / "inter-agent" / "venv"
+    (managed / "bin").mkdir(parents=True)
+    (managed / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+
+    result = run_wrapper(tmp_path, "status")
+
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert "runtime unavailable (managed)" in result.stdout
+    assert "/inter-agent setup" in result.stdout
 
 
 def test_claude_wrapper_managed_helper_broken_interpreter_fails_bounded(
@@ -333,12 +366,11 @@ def test_claude_wrapper_managed_helper_broken_interpreter_fails_bounded(
 
     result = run_wrapper(tmp_path, "status")
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup failed:" in result.stderr
-    assert "managed venv interpreter not executable" in result.stderr
-    assert "/no/such/interpreter" in result.stderr
-    assert "setup needed" not in result.stderr
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert "managed venv interpreter not executable" in result.stdout
+    assert "/no/such/interpreter" in result.stdout
+    assert "/inter-agent setup" in result.stdout
 
 
 def test_claude_wrapper_uses_path_helper_when_no_managed_or_project(tmp_path: Path) -> None:
@@ -367,34 +399,45 @@ def test_claude_wrapper_path_helper_broken_interpreter_fails_bounded(
         env={"PATH": f"{path_helper.parent}{os.pathsep}/usr/bin:/bin"},
     )
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup failed:" in result.stderr
-    assert "PATH interpreter not executable" in result.stderr
-    assert "/no/such/interpreter" in result.stderr
-    assert "setup needed" not in result.stderr
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert "runtime unavailable (path)" in result.stdout
+    assert "PATH interpreter not executable" in result.stdout
+    assert "/inter-agent setup" in result.stdout
 
 
 def test_claude_wrapper_skips_path_helper_equal_to_self(tmp_path: Path) -> None:
-    # The wrapper must not exec itself when its own bin directory is on PATH;
-    # that guard is what prevents a setup-needed 127 from hiding behind a
-    # recursive wrapper invocation.
     result = run_wrapper(
         tmp_path,
         "status",
         env={"PATH": f"{SKILL_BIN}{os.pathsep}/usr/bin:/bin"},
     )
 
-    assert result.returncode == 127
-    assert result.stdout == ""
-    assert "[inter-agent] setup needed: run /inter-agent bootstrap" in result.stderr
+    assert result.returncode == 3
+    assert result.stderr == ""
+    assert "/inter-agent setup" in result.stdout
+
+
+def test_claude_wrapper_bounds_adversarial_helper_path(tmp_path: Path) -> None:
+    long_path = "/" + ("segment/" * 600) + "inter-agent-claude"
+
+    result = run_wrapper(
+        tmp_path,
+        "status",
+        env={"INTER_AGENT_CLAUDE_HELPER": long_path},
+    )
+
+    assert result.returncode == 4
+    assert result.stderr == ""
+    assert len(result.stdout) <= 512
+    assert "runtime unavailable (explicit)" in result.stdout
+    assert "does not modify overrides" in result.stdout
+    assert "README.md#recovery-and-configuration" in result.stdout
 
 
 def test_claude_wrapper_forwards_tls_data_and_secret_to_helper_unchanged(
     tmp_path: Path,
 ) -> None:
-    """The bundled wrapper forwards core TLS/data env and maps the plugin
-    secret to INTER_AGENT_SECRET without altering values or leaking them."""
     project_path = tmp_path / "checkout"
     helper = project_path / ".venv" / "bin" / "inter-agent-claude"
     data_dir = str(tmp_path / "state")
@@ -426,16 +469,11 @@ def test_claude_wrapper_forwards_tls_data_and_secret_to_helper_unchanged(
 
     assert result.returncode == 0
     summary = _parse_presence(result.stdout)
-    # Each value passed through unchanged (eq=true) and is present.
     for name in ("DATA_DIR", "TLS", "TLS_CERT", "TLS_KEY", "SECRET"):
         assert summary[f"{name}_eq"] == "true", name
         assert summary[f"{name}_present"] == "true", name
-
-    # Helper arguments pass through unchanged.
     assert _parse_args(result.stdout) == ["status", "--json"]
 
-    # The raw secret and private-key/cert paths never enter argv, stdout, or
-    # stderr; only fixed boolean fields are emitted.
     for stream in (result.stdout, result.stderr):
         assert secret_value not in stream
         assert tls_cert not in stream
@@ -445,11 +483,8 @@ def test_claude_wrapper_forwards_tls_data_and_secret_to_helper_unchanged(
 
 
 def test_claude_wrapper_adds_no_claude_specific_tls_defaults(tmp_path: Path) -> None:
-    """With no TLS env or plugin secret configured, the wrapper injects none."""
     project_path = tmp_path / "checkout"
     helper = project_path / ".venv" / "bin" / "inter-agent-claude"
-    # Non-empty sentinels so eq=false would also flag an injection; the
-    # presence check is the primary no-default proof.
     make_presence_helper(
         helper,
         {"TLS": "true", "TLS_CERT": "/x", "TLS_KEY": "/y", "SECRET": "s"},
@@ -463,7 +498,262 @@ def test_claude_wrapper_adds_no_claude_specific_tls_defaults(tmp_path: Path) -> 
 
     assert result.returncode == 0
     summary = _parse_presence(result.stdout)
-    # The wrapper injected no Claude-specific TLS defaults and no secret.
     for name in ("TLS", "TLS_CERT", "TLS_KEY", "SECRET"):
         assert summary[f"{name}_present"] == "false", name
     assert _parse_args(result.stdout) == ["channels"]
+
+
+def test_claude_wrapper_bin_assets_are_executable() -> None:
+    for asset in (WRAPPER, SETUP):
+        assert asset.is_file()
+        assert asset.stat().st_mode & 0o111, f"{asset} is not executable"
+
+
+def _make_fake_python(path: Path, log: Path) -> None:
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'printf \'%s\\n\' "$*" >> "$FAKE_PYTHON_LOG"\n'
+        "if [[ \"$1\" == '-m' && \"$2\" == 'venv' ]]; then\n"
+        '  if [[ "${FAKE_FAIL_VENV:-}" == 1 ]]; then exit 1; fi\n'
+        '  target="${@: -1}"\n'
+        '  mkdir -p "$target/bin"\n'
+        "  printf 'home = /usr/bin\\n' > \"$target/pyvenv.cfg\"\n"
+        '  cp "$0" "$target/bin/python"\n'
+        '  chmod +x "$target/bin/python"\n'
+        "elif [[ \"$1\" == '-m' && \"$2\" == 'pip' && \"$3\" == '--version' ]]; then\n"
+        '  if [[ "${FAKE_FAIL_PIP:-}" == 1 ]]; then exit 1; fi\n'
+        "  printf 'pip 1.0\\n'\n"
+        "elif [[ \"$1\" == '-m' && \"$2\" == 'pip' && \"$3\" == 'install' ]]; then\n"
+        '  if [[ "${FAKE_FAIL_INSTALL:-}" == 1 ]]; then exit 1; fi\n'
+        '  if [[ "${FAKE_SKIP_HELPER:-}" == 1 ]]; then exit 0; fi\n'
+        '  root="$(cd "$(dirname "$0")/.." && pwd)"\n'
+        '  if [[ "${FAKE_BROKEN_HELPER:-}" == 1 ]]; then\n'
+        "    printf '#!/no/such/interpreter\\n' > \"$root/bin/inter-agent-claude\"\n"
+        "  else\n"
+        "    printf '#!/bin/sh\\nprintf setup-helper\\n' > \"$root/bin/inter-agent-claude\"\n"
+        "  fi\n"
+        '  chmod +x "$root/bin/inter-agent-claude"\n'
+        "fi\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    log.touch()
+
+
+def run_setup(
+    tmp_path: Path,
+    venv: Path,
+    *,
+    source: str | None = None,
+    python: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    log = tmp_path / "python.log"
+    _make_fake_python(fake_python, log)
+    command = [
+        "bash",
+        str(SETUP),
+        "--yes",
+        "--venv",
+        str(venv),
+        "--source",
+        source or str(tmp_path / "source.zip"),
+    ]
+    if python is not None:
+        command.extend(("--python", str(python)))
+    env = {
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "FAKE_PYTHON_LOG": str(log),
+    }
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        command,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_claude_setup_does_not_print_configured_source(tmp_path: Path) -> None:
+    secret_source = "https://user:source-secret@example.invalid/inter-agent.zip"
+    result = run_setup(tmp_path, tmp_path / "managed" / "venv", source=secret_source)
+
+    assert result.returncode == 0, result.stderr
+    assert "configured source" in result.stdout
+    assert secret_source not in result.stdout
+    assert secret_source not in result.stderr
+
+
+def test_claude_setup_rejects_invalid_explicit_python(tmp_path: Path) -> None:
+    bad_python = tmp_path / "bad-python"
+    bad_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    bad_python.chmod(0o755)
+
+    result = run_setup(tmp_path, tmp_path / "managed" / "venv", python=bad_python)
+
+    assert result.returncode == 2
+    assert "configured setup Python is not a usable" in result.stderr
+    assert not (tmp_path / "managed" / "venv").exists()
+
+
+def test_claude_setup_reports_venv_creation_failure(tmp_path: Path) -> None:
+    result = run_setup(
+        tmp_path,
+        tmp_path / "managed" / "venv",
+        extra_env={"FAKE_FAIL_VENV": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "could not create or repair venv" in result.stderr
+
+
+def test_claude_setup_reports_pip_failure(tmp_path: Path) -> None:
+    result = run_setup(
+        tmp_path,
+        tmp_path / "managed" / "venv",
+        extra_env={"FAKE_FAIL_PIP": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "venv pip is unavailable" in result.stderr
+
+
+def test_claude_setup_reports_install_failure(tmp_path: Path) -> None:
+    result = run_setup(
+        tmp_path,
+        tmp_path / "managed" / "venv",
+        extra_env={"FAKE_FAIL_INSTALL": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "runtime install failed" in result.stderr
+
+
+def test_claude_setup_reports_missing_installed_helper(tmp_path: Path) -> None:
+    result = run_setup(
+        tmp_path,
+        tmp_path / "managed" / "venv",
+        extra_env={"FAKE_SKIP_HELPER": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "installed helper missing or not executable" in result.stderr
+
+
+def test_claude_setup_reports_broken_installed_helper(tmp_path: Path) -> None:
+    result = run_setup(
+        tmp_path,
+        tmp_path / "managed" / "venv",
+        extra_env={"FAKE_BROKEN_HELPER": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "installed helper interpreter not executable" in result.stderr
+
+
+def test_claude_setup_clears_only_verified_incomplete_venv(tmp_path: Path) -> None:
+    venv = tmp_path / "managed" / "venv"
+    venv.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+
+    result = run_setup(tmp_path, venv)
+
+    assert result.returncode == 0, result.stderr
+    assert "--clear" in (tmp_path / "python.log").read_text(encoding="utf-8")
+    assert (venv / "bin" / "inter-agent-claude").is_file()
+
+
+def test_claude_setup_does_not_clear_missing_venv(tmp_path: Path) -> None:
+    venv = tmp_path / "managed" / "venv"
+
+    result = run_setup(tmp_path, venv)
+
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "python.log").read_text(encoding="utf-8")
+    assert "-m venv " + str(venv) in log
+    assert "--clear" not in log
+
+
+def test_claude_setup_reuses_healthy_venv_without_clear(tmp_path: Path) -> None:
+    venv = tmp_path / "managed" / "venv"
+    helper = venv / "bin" / "inter-agent-claude"
+    helper.parent.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    helper.write_text("#!/bin/sh\nprintf healthy\\n", encoding="utf-8")
+    helper.chmod(0o755)
+
+    result = run_setup(tmp_path, venv)
+
+    assert result.returncode == 0, result.stderr
+    assert "--clear" not in (tmp_path / "python.log").read_text(encoding="utf-8")
+
+
+def test_claude_setup_refuses_unrecognized_existing_directory(tmp_path: Path) -> None:
+    venv = tmp_path / "managed" / "venv"
+    venv.mkdir(parents=True)
+    marker = venv / "must-remain.txt"
+    marker.write_text("do not clear", encoding="utf-8")
+
+    result = run_setup(tmp_path, venv)
+
+    assert result.returncode == 2
+    assert "manual inspection required" in result.stderr
+    assert marker.read_text(encoding="utf-8") == "do not clear"
+
+
+def test_claude_setup_refuses_empty_target(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    _make_fake_python(fake_python, tmp_path / "python.log")
+    result = subprocess.run(
+        ["bash", str(SETUP), "--yes", "--venv", ""],
+        env={
+            "HOME": str(tmp_path / "home"),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "FAKE_PYTHON_LOG": str(tmp_path / "python.log"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "managed venv path is empty" in result.stderr
+    assert not (tmp_path / "home").exists()
+
+
+def test_claude_setup_refuses_dot_segment_target(tmp_path: Path) -> None:
+    result = run_setup(tmp_path, tmp_path / "managed" / ".." / "managed")
+
+    assert result.returncode == 2
+    assert "unsafe managed venv path" in result.stderr
+
+
+def test_claude_setup_refuses_unsafe_target(tmp_path: Path) -> None:
+    result = run_setup(tmp_path, Path("/tmp"))
+
+    assert result.returncode == 2
+    assert "unsafe managed venv path" in result.stderr
+    assert not (tmp_path / "python.log").read_text(encoding="utf-8")
+
+
+def test_claude_setup_refuses_symlink_target(tmp_path: Path) -> None:
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    (actual / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    link = tmp_path / "managed"
+    link.symlink_to(actual, target_is_directory=True)
+
+    result = run_setup(tmp_path, link)
+
+    assert result.returncode == 2
+    assert "symlink" in result.stderr
+    assert (actual / "pyvenv.cfg").is_file()

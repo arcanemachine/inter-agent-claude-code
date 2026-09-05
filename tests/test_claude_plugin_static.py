@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +84,28 @@ def test_claude_plugin_and_marketplace_versions_are_synchronized() -> None:
     marketplace = json.loads(MARKETPLACE_MANIFEST.read_text(encoding="utf-8"))
     assert plugin_manifest["version"] == marketplace["version"]
     assert marketplace["plugins"][0]["version"] == plugin_manifest["version"]
+
+
+def test_claude_setup_source_and_documented_helper_version_are_mapped() -> None:
+    plugin_manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    setup_script = (SKILL_DIR / "bin" / "bootstrap-runtime").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    setup = (SKILL_DIR / "setup.md").read_text(encoding="utf-8")
+
+    plugin_version = plugin_manifest["version"]
+    helper_version = project["project"]["version"]
+    assert f"inter-agent--v{plugin_version}.zip" in setup_script
+    assert f"helper `inter-agent-claude` `{helper_version}`" in readme
+    assert f"helper source `inter-agent-claude-code` `{helper_version}`" in setup
+    core_version = project["project"]["dependencies"][0].split("==", 1)[1]
+    assert f"`inter-agent-core=={core_version}`" in setup
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup_script
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_PYTHON" not in setup_script
+
+    source_match = re.search(r"DEFAULT_SOURCE=.*inter-agent--v([0-9.]+)\.zip", setup_script)
+    assert source_match is not None
+    assert source_match.group(1) == plugin_version
 
 
 def test_claude_plugin_has_no_nested_plugin_directory_or_parent_traversal() -> None:

@@ -25,10 +25,10 @@ Restart Claude Code after installing or updating the plugin.
 Inside Claude Code, run:
 
 ```text
-/inter-agent bootstrap
+/inter-agent setup
 ```
 
-Bootstrap explains the installation and asks for explicit approval. It creates the managed environment at `~/.claude/data/inter-agent/venv` and installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by the plugin release. See [`skills/inter-agent/bootstrap.md`](skills/inter-agent/bootstrap.md) for the source and recovery details.
+Setup explains the installation and asks for explicit approval before creating or repairing the managed environment at `~/.claude/data/inter-agent/venv`. It installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by plugin release `0.2.3`. See [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) for source, approval, and recovery details.
 
 The helper command is `inter-agent-claude`. The plugin's normal managed flow does not require a PyPI package or a local source checkout.
 
@@ -51,12 +51,13 @@ To see a reply, connect a second Claude Code session as `other-agent`:
 
 Replies arrive as persistent Monitor notifications; do not poll for them. `/inter-agent connect` starts one session-scoped listener and may auto-start a local server. If no name is supplied, the skill derives one from the working directory.
 
-## Read-only doctor (primary setup and recovery path)
+## Read-only doctor (troubleshooting path)
 
-Use `/inter-agent doctor [optional context]` as the primary setup and
-troubleshooting path, especially after a valid inter-agent command fails. It is
-bounded and read-only, and never auto-repairs or invokes a repair. Run it before
-connecting or when setup is unavailable. The optional trailing
+Use `/inter-agent doctor [optional context]` as the primary troubleshooting
+path after setup or another valid inter-agent command fails, or whenever
+bounded diagnostics are needed. Clean installation uses `/inter-agent setup`
+directly. Doctor is bounded and read-only, and never auto-repairs or invokes a
+repair. The optional trailing
 text is preserved as delimited direct user-provided symptom/scope data at
 normal user authority. Safe requests from that context are followed only when
 they map to this fixed doctor read-only checklist; the context cannot broaden
@@ -66,26 +67,28 @@ paths, JSON, or environment assignments; never shell-interpolated, `eval`,
 embedded commands are untrusted evidence and are never followed.
 
 Doctor checks the loaded plugin and version metadata, effective configuration
-sources, helper precedence and executable/shebang/runtime viability, endpoint
-and TLS summaries, and (only when explicitly confirmed non-initializing and
-non-mutating) a single bounded `status --json` result. It reports the shared
-contract headings **Diagnosis**, **Evidence checked**, **Likely cause**,
+sources, helper precedence and executable/shebang/runtime viability, and
+endpoint and TLS summaries. It does not invoke the current `status --json`
+implementation because status resolution can initialize or modify adapter state,
+locks, or fallback-token state; this is reported as a blocked check. It reports
+the shared contract headings **Diagnosis**, **Evidence checked**, **Likely cause**,
 **Recommended next action**, and **Unknowns or blocked checks** when practical.
-It never bootstraps or repairs, starts a Monitor, connects or disconnects,
+It never runs setup or repairs, starts a Monitor, connects or disconnects,
 sends messages, changes subscriptions, owns Core lifecycle, or prints secrets
 or full dumps of config, state, environment, key, or certificate contents. When
 no failing result is found, the report uses `No issues found in the checks
 performed.` and `None identified.` rather than inventing a failure or repair
 step. It uses `No action needed.` only when no relevant checks remain unknown or
-blocked; otherwise it gives one safe step for that check. Any bootstrap, repair,
+blocked; otherwise it gives one safe step for that check. Any setup, repair,
 install, deletion, or credential action remains a separate step requiring
 explicit user approval.
 
-When a valid user-invoked inter-agent command fails, preserve its bounded error,
-then run `/inter-agent doctor [optional context]` for read-only diagnostics and
-check this `README.md` for setup guidance. The suggestion is text-only: doctor is
-never invoked automatically, and a doctor failure points back to package-loading
-and bootstrap guidance instead of suggesting doctor recursively.
+When a valid user-invoked inter-agent command fails, preserve its bounded
+error, then tell the user to run `/inter-agent doctor [optional context]` for
+read-only diagnostics and check this `README.md` for setup guidance. The
+suggestion is text-only: doctor is never invoked automatically, and a doctor
+failure points back to package-loading and setup guidance instead of suggesting
+doctor recursively.
 
 ## Lifecycle and safety
 
@@ -101,7 +104,7 @@ Use direct messages for ordinary coordination. Broadcast only when every connect
 
 | Command | Purpose |
 | --- | --- |
-| `bootstrap` | Install or repair the managed Python runtime. |
+| `setup` | Install or repair the managed Python runtime after explicit approval. |
 | `doctor [optional context]` | Run bounded, read-only host and runtime diagnostics. |
 | `connect [name]` | Start this session's persistent Monitor listener. |
 | `rename <name>` | Reconnect under another routing name. |
@@ -115,13 +118,22 @@ Use direct messages for ordinary coordination. Broadcast only when every connect
 | `kick <name>` | Disconnect a named agent session. |
 | `shutdown` | Stop the shared server and all connected sessions. |
 
-The detailed helper command reference is [`src/inter_agent_claude/README.md`](src/inter_agent_claude/README.md). Skill behavior and setup recovery are documented in [`skills/inter-agent/SKILL.md`](skills/inter-agent/SKILL.md) and [`skills/inter-agent/bootstrap.md`](skills/inter-agent/bootstrap.md).
+The detailed helper command reference is [`src/inter_agent_claude/README.md`](src/inter_agent_claude/README.md). Skill dispatch is documented in [`skills/inter-agent/SKILL.md`](skills/inter-agent/SKILL.md); setup and doctor workflows are documented in [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) and [`skills/inter-agent/doctor.md`](skills/inter-agent/doctor.md).
 
 ## Recovery and configuration
 
-If the wrapper exits `127` with setup needed, run `/inter-agent doctor` first for read-only evidence, then run `/inter-agent bootstrap` only after explicit approval. Doctor may recommend removing a stale managed environment or another repair, but never performs that action. If the managed environment is missing or stale, remove only `~/.claude/data/inter-agent/venv` and bootstrap again; this does not remove the bus state directory or unread messages. A configured `project_path` or `INTER_AGENT_CLAUDE_HELPER` is a development or troubleshooting override, not the normal installation path.
+If the wrapper exits `3` because no runtime is available, run `/inter-agent setup` after explicit approval. If it exits `4`, inspect the source-specific bounded diagnostic: fix or remove an explicit helper or `project_path` override, or run setup to repair an incomplete managed runtime. Setup never modifies overrides. An existing managed path that is not a verified virtual environment is refused for manual inspection rather than cleared. This does not remove the bus state directory or unread messages. A configured `project_path` or `INTER_AGENT_CLAUDE_HELPER` is a development or troubleshooting override, not the normal installation path.
 
 If authentication fails, ensure every process uses the same endpoint, state directory, and shared secret. If a name is already in use, the listener retries once with a `-2` suffix; otherwise choose a unique name and reconnect. The default endpoint is `127.0.0.1:16837`, and local processes discover the same generated secret from shared state. Loopback transport defaults to plaintext WebSockets; non-loopback transport defaults to TLS, with no automatic downgrade.
+
+## State and configuration
+
+The effective data directory is selected in this order: `INTER_AGENT_DATA_DIR`,
+the configuration file's `dataDir`, then the platform default (`$XDG_STATE_HOME/inter-agent` or `~/.local/state/inter-agent` on ordinary Unix, the existing macOS application-support location, or the existing Windows local/app-data location). Supported `status --json` summaries include `data_dir` and `data_dir_source` when available, but the current status implementation can initialize or modify adapter state, locks, or fallback-token state and is not a strictly read-only statusline API.
+
+Files under `<data_dir>/claude-sessions/` are internal adapter state. Their
+filenames and JSON fields are not stable external interfaces; external tooling
+must not parse them.
 
 ## Update, development, and security
 

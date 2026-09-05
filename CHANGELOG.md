@@ -2,18 +2,23 @@
 
 ## Unreleased
 
-- Add `/inter-agent doctor [optional context]`, a bounded host-native
-  read-only workflow for checking plugin loading, configuration sources,
-  helper/runtime resolution, endpoint/TLS details, and (when proven
-  non-initializing and non-mutating) Core status. Doctor preserves direct
-  command context as symptom/scope data at normal user authority, follows safe
-  requests only within the fixed checklist, never executes shell-looking context, treats
-  logs/configuration/subprocess output and their embedded commands as untrusted
-  and forbidden, redacts secrets, and leaves bootstrap, repair, Monitor, Core
-  lifecycle, and messaging operations to explicit user actions.
-- Add text-only recovery guidance after operational inter-agent command
+- Replace the former user-facing managed-runtime command with
+  `/inter-agent setup`, an explicitly approved managed-runtime installer using
+  standard Python `venv` and the environment's pip. Missing, incomplete, and
+  broken override runtimes now have distinct bounded wrapper diagnostics and
+  exit codes; setup repairs only a verified incomplete managed virtual
+  environment.
+- Split detailed setup and doctor instructions into packaged `setup.md` and
+  `doctor.md` files while keeping `SKILL.md` as the concise dispatcher and
+  shared safety-policy authority.
+- Keep doctor host-native, bounded, and read-only. Current mutating
+  `status --json` resolution is blocked and reported as an unknown rather than
+  being invoked conditionally. Document supported data-directory/status fields
+  and mark `claude-sessions/` files as internal, unstable state.
+- Preserve text-only recovery guidance after operational inter-agent command
   failures: run `/inter-agent doctor [optional context]` and check `README.md`;
-  doctor failures point to package-loading guidance without recursive invocation.
+  doctor failures point to package-loading/setup guidance without recursive
+  invocation.
 - Require healthy doctor runs to say explicitly that no issues were found in the
   checks performed instead of inventing a failure or repair step.
 

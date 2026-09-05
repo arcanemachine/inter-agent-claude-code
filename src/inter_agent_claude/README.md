@@ -6,6 +6,12 @@ The `inter_agent_claude` package is the Python helper for the
 [`/inter-agent` skill](../../README.md) (see the root `README.md` for plugin and
 marketplace installation).
 
+The packaged wrapper owns managed setup through `/inter-agent setup`; setup is
+not a helper subcommand. It uses `python -m venv` and the environment's
+`python -m pip` only after explicit approval. The wrapper resolves explicit and
+project overrides before the managed venv, and setup never modifies those
+overrides.
+
 ## Commands
 
 Run Claude adapter commands through the installed package entry point:
@@ -114,14 +120,25 @@ manually, it runs until explicit shutdown unless you pass
 
 ## Output and failures
 
-Command output is JSON-oriented. Stdout is reserved for protocol or status
-payloads. Stderr is reserved for local diagnostics.
+Helper command output is JSON-oriented. Stdout is reserved for protocol or
+status payloads. Stderr is reserved for local diagnostics. The wrapper has one
+preflight exception: when no helper exists or a selected runtime is unusable,
+it emits exactly one bounded setup diagnosis on stdout and exits `3` or `4` so a
+Claude Code Monitor can display it. Successful helper output remains unchanged;
+ordinary diagnostics after the helper starts remain on stderr.
 
 `status` prints a JSON status object with `state`, `host`, `port`,
 `server_reachable`, `message`, `core_list_supported`, `adapter_list_exposed`,
-`connected`, and `connected_name` fields. `connected` is true when a live
-listener is registered for the current Claude Code session; `connected_name` is
-the routing name that listener uses (or null when not connected).
+`connected`, `connected_name`, `data_dir`, and `data_dir_source` fields when
+available. `connected` is true when a live listener is registered for the
+current Claude Code session; `connected_name` is the routing name that listener
+uses (or null when not connected).
+
+The current status implementation can initialize or modify adapter state while
+resolving these fields, including creating/chmodding directories, locks, or a
+fallback token. It is not a strictly read-only statusline API. Adapter files
+under `<data_dir>/claude-sessions/`, including their filenames and JSON fields,
+are internal implementation details and are not stable external interfaces.
 
 ## Permanent errors
 

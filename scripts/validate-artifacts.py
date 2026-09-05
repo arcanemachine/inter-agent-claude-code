@@ -24,10 +24,17 @@ REQUIRED_WHEEL_DATA = {
     f"{SHARE_ROOT}/.claude-plugin/plugin.json",
     f"{SHARE_ROOT}/.claude-plugin/marketplace.json",
     f"{SHARE_ROOT}/skills/inter-agent/SKILL.md",
-    f"{SHARE_ROOT}/skills/inter-agent/bootstrap.md",
+    f"{SHARE_ROOT}/skills/inter-agent/setup.md",
+    f"{SHARE_ROOT}/skills/inter-agent/doctor.md",
     f"{SHARE_ROOT}/skills/inter-agent/bin/inter-agent-claude",
     f"{SHARE_ROOT}/skills/inter-agent/bin/bootstrap-runtime",
 }
+
+REQUIRED_EXECUTABLE_ASSETS = (
+    "skills/inter-agent/bin/inter-agent-claude",
+    "skills/inter-agent/bin/bootstrap-runtime",
+)
+REMOVED_ASSETS = ("skills/inter-agent/bootstrap.md",)
 
 # Forbidden anywhere in either artifact (matched as path fragments).
 FORBIDDEN_FRAGMENTS = (
@@ -77,6 +84,7 @@ def validate_wheel(whl: Path) -> None:
     print(f"== python wheel: {whl.name} ==")
     with zipfile.ZipFile(whl) as z:
         names = z.namelist()
+        infos = {name: z.getinfo(name) for name in names}
     meta = wheel_metadata(whl)
     if f"Name: {EXPECTED_NAME}" not in meta:
         fail(f"wheel Name not {EXPECTED_NAME!r}")
@@ -111,6 +119,13 @@ def validate_wheel(whl: Path) -> None:
     missing = sorted(req for req in REQUIRED_WHEEL_DATA if not any(req in n for n in names))
     if missing:
         fail(f"wheel missing required data files: {missing!r}")
+    removed = sorted(a for a in REMOVED_ASSETS if any(n.endswith(a) for n in names))
+    if removed:
+        fail(f"wheel shipped removed assets: {removed!r}")
+    for asset in REQUIRED_EXECUTABLE_ASSETS:
+        matches = [info for name, info in infos.items() if name.endswith(asset)]
+        if not matches or not any(info.external_attr >> 16 & 0o111 for info in matches):
+            fail(f"wheel asset is not executable: {asset!r}")
 
     for n in names:
         low = n.lower()
@@ -161,7 +176,8 @@ def validate_sdist(sdist: Path) -> None:
         ".claude-plugin/plugin.json",
         ".claude-plugin/marketplace.json",
         "skills/inter-agent/SKILL.md",
-        "skills/inter-agent/bootstrap.md",
+        "skills/inter-agent/setup.md",
+        "skills/inter-agent/doctor.md",
         "skills/inter-agent/bin/inter-agent-claude",
         "skills/inter-agent/bin/bootstrap-runtime",
         "scripts/run-checks.sh",
@@ -172,6 +188,13 @@ def validate_sdist(sdist: Path) -> None:
     missing_assets = sorted(a for a in required_assets if not any(n.endswith(a) for n in names))
     if missing_assets:
         fail(f"sdist missing required assets: {missing_assets!r}")
+    removed = sorted(a for a in REMOVED_ASSETS if any(n.endswith(a) for n in names))
+    if removed:
+        fail(f"sdist shipped removed assets: {removed!r}")
+    for asset in REQUIRED_EXECUTABLE_ASSETS:
+        matches = [member for member in members if member.isfile() and member.name.endswith(asset)]
+        if not matches or not any(member.mode & 0o111 for member in matches):
+            fail(f"sdist asset is not executable: {asset!r}")
 
     for n in names:
         low = n.lower()

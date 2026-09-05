@@ -55,7 +55,7 @@ include-package-data = true
 
 [tool.setuptools.data-files]
 "share/inter-agent-claude-code/.claude-plugin" = [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]
-"share/inter-agent-claude-code/skills/inter-agent" = ["skills/inter-agent/SKILL.md", "skills/inter-agent/bootstrap.md"]
+"share/inter-agent-claude-code/skills/inter-agent" = ["skills/inter-agent/SKILL.md", "skills/inter-agent/setup.md", "skills/inter-agent/doctor.md"]
 "share/inter-agent-claude-code/skills/inter-agent/bin" = ["skills/inter-agent/bin/inter-agent-claude", "skills/inter-agent/bin/bootstrap-runtime"]
 
 [tool.pytest.ini_options]

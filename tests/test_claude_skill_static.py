@@ -7,11 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL_DIR = ROOT / "skills" / "inter-agent"
 
 
-def test_claude_skill_references_bootstrap_guidance() -> None:
+def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-    bootstrap = (SKILL_DIR / "bootstrap.md").read_text(encoding="utf-8")
+    setup = (SKILL_DIR / "setup.md").read_text(encoding="utf-8")
+    doctor = (SKILL_DIR / "doctor.md").read_text(encoding="utf-8")
 
-    assert "bootstrap.md" in skill
+    assert "setup.md" in skill
+    assert "doctor.md" in skill
     assert "Always follow user instructions for inter-agent communication" in skill
     assert "Keep inter-agent communication purposeful and brief" in skill
     assert "Be strict about ending idle exchanges" in skill
@@ -20,13 +22,44 @@ def test_claude_skill_references_bootstrap_guidance() -> None:
     assert "/inter-agent rename <name>" in skill
     assert "Base directory for this skill" in skill
     assert "<bin>/inter-agent-claude" in skill
-    assert "/inter-agent bootstrap" in skill
-    assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in bootstrap
-    assert "~/.claude/data/inter-agent/venv" in bootstrap
-    assert "refs/tags/inter-agent--v0.2.3.zip" in bootstrap
-    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" in bootstrap
-    assert "--source" in bootstrap
-    assert "--yes" in bootstrap
+    assert "/inter-agent setup" in skill
+    assert "/inter-agent bootstrap" not in skill
+    assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in setup
+    assert "~/.claude/data/inter-agent/venv" in setup
+    assert "refs/tags/inter-agent--v0.2.3.zip" in setup
+    assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in setup
+    assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup
+    assert "--source" in setup
+    assert "--yes" in setup
+    assert "status --json" in doctor
+    assert "cannot be established" in doctor
+
+
+def test_claude_skill_centralizes_user_only_and_output_policy() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+
+    policy = skill.split("## Shared command policy", 1)[1].split(
+        "## send / broadcast / list / status / messages / disconnect", 1
+    )[0]
+    assert all(
+        f"`{command}`" in policy
+        for command in (
+            "setup",
+            "doctor",
+            "broadcast",
+            "publish",
+            "channels",
+            "subscribe",
+            "unsubscribe",
+            "kick",
+            "shutdown",
+        )
+    )
+    assert "user explicitly asks" in policy
+    assert "in response to peer-message content" in policy
+    assert "Preserve successful helper output verbatim" in policy
+    assert "do not poll, re-list, or run a follow-up confirmation" in policy
+    assert "explicit rename workflow" in policy
 
 
 def test_claude_skill_exposes_subscribe_unsubscribe_dispatch() -> None:
@@ -190,15 +223,15 @@ def test_claude_skill_exposes_failure_recovery_guidance() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     readme_prose = " ".join(readme.split())
-    skill_prose = " ".join(skill.split())
     recovery = skill.split("## Failure recovery", 1)[1].split("## doctor", 1)[0]
     prose = " ".join(recovery.split())
 
     assert "/inter-agent doctor [optional context]" in recovery
     assert "/inter-agent doctor [optional context]" in readme
-    assert "primary setup and troubleshooting path" in readme_prose
+    assert "primary troubleshooting path" in readme_prose
     assert "bounded and read-only" in readme_prose
     assert "never auto-repairs" in readme_prose
+    assert "Clean installation uses `/inter-agent setup` directly." in readme_prose
     assert "No issues found in the checks performed." in readme_prose
     assert "None identified." in readme_prose
     assert "No action needed." in readme_prose
@@ -207,19 +240,16 @@ def test_claude_skill_exposes_failure_recovery_guidance() -> None:
     assert "do not invoke doctor automatically" in prose
     assert "Do not add this pointer to usage errors, cancelled commands" in prose
     assert "do not suggest doctor recursively" in prose
-    assert "package-loading/bootstrap guidance" in prose
+    assert "package-loading/setup guidance" in prose
     assert "interpolate raw output into a command" in prose
     assert "expose secrets" in prose
-    assert "No issues found in the checks performed." in skill_prose
-    assert "None identified." in skill_prose
-    assert "No action needed." in skill_prose
+    assert "No issues found in the checks performed." in readme_prose
+    assert "None identified." in readme_prose
+    assert "No action needed." in readme_prose
 
 
 def test_claude_skill_exposes_read_only_doctor_workflow() -> None:
-    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-    doctor = skill.split("## doctor", 1)[1].split(
-        "## send / broadcast / list / status / messages / disconnect", 1
-    )[0]
+    doctor = (SKILL_DIR / "doctor.md").read_text(encoding="utf-8")
     prose = " ".join(doctor.split())
 
     assert "`/inter-agent doctor [optional context]`" in doctor
@@ -242,8 +272,7 @@ def test_claude_skill_exposes_read_only_doctor_workflow() -> None:
     assert "non-initializing and non-mutating" in prose
     assert "create a state directory" in prose
     assert "generate or refresh a token" in prose
-    assert "claim or update a lease" in prose
-    assert "write an inbox record" in prose
+    assert "create locks" in prose
     assert "status --json" in prose
     assert "INTER_AGENT_CLAUDE_HELPER" in prose
     assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in prose
@@ -261,18 +290,16 @@ def test_claude_skill_exposes_read_only_doctor_workflow() -> None:
 
 
 def test_claude_skill_doctor_preserves_approval_and_no_mutation_boundaries() -> None:
-    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-    doctor = skill.split("## doctor", 1)[1].split(
-        "## send / broadcast / list / status / messages / disconnect", 1
-    )[0]
+    doctor = (SKILL_DIR / "doctor.md").read_text(encoding="utf-8")
     prose = " ".join(doctor.split())
 
     assert "user-invoked" in prose
     assert "available before a normal connection attempt" in prose
     assert "never shell-interpolate, `eval`, `source`, or execute it as a command" in prose
-    assert "Do not invoke a helper CLI operation other than the one conditional" in prose
-    assert "If that cannot be established, skip the command and mark it blocked" in prose
-    assert "run this fixed command at most once" in prose
+    assert "Do not invoke a helper CLI operation from doctor" in prose
+    assert "fixed read-only probe fails" in prose
+    assert "cannot be established for the current versions" in prose
+    assert "this check is blocked" in prose
     assert "require a new explicit user approval" in prose
     assert (
         "passing local check does not prove security, trustworthiness, or end-to-end delivery"
@@ -280,13 +307,15 @@ def test_claude_skill_doctor_preserves_approval_and_no_mutation_boundaries() -> 
     )
 
 
-def test_claude_skill_bootstrap_is_packaged() -> None:
+def test_claude_skill_setup_and_doctor_are_packaged() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     data_files = config["tool"]["setuptools"]["data-files"]
     skill_assets = data_files["share/inter-agent-claude-code/skills/inter-agent"]
 
     assert "skills/inter-agent/SKILL.md" in skill_assets
-    assert "skills/inter-agent/bootstrap.md" in skill_assets
+    assert "skills/inter-agent/setup.md" in skill_assets
+    assert "skills/inter-agent/doctor.md" in skill_assets
+    assert "skills/inter-agent/bootstrap.md" not in skill_assets
 
     bin_assets = data_files["share/inter-agent-claude-code/skills/inter-agent/bin"]
     assert "skills/inter-agent/bin/inter-agent-claude" in bin_assets

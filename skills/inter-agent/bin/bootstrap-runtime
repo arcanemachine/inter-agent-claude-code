@@ -4,8 +4,8 @@ set -euo pipefail
 DOCS="README.md#recovery-and-configuration"
 DEFAULT_SOURCE="https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/inter-agent--v0.2.3.zip"
 VENV="${INTER_AGENT_CLAUDE_VENV:-$HOME/.claude/data/inter-agent/venv}"
-SOURCE="${INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE:-$DEFAULT_SOURCE}"
-PYTHON_OVERRIDE="${INTER_AGENT_CLAUDE_BOOTSTRAP_PYTHON:-}"
+SOURCE="${INTER_AGENT_CLAUDE_SETUP_SOURCE:-$DEFAULT_SOURCE}"
+PYTHON_OVERRIDE="${INTER_AGENT_CLAUDE_SETUP_PYTHON:-}"
 YES=false
 
 expand_path() {
@@ -17,17 +17,37 @@ expand_path() {
   esac
 }
 
+absolute_path() {
+  local value="$1"
+  case "$value" in
+    /*) printf '%s\n' "$value" ;;
+    *) printf '%s/%s\n' "$PWD" "$value" ;;
+  esac
+}
+
+bounded_value() {
+  local value="$1"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//$'\t'/ }"
+  if (( ${#value} > 256 )); then
+    printf '%s...%s' "${value:0:64}" "${value: -160}"
+  else
+    printf '%s' "$value"
+  fi
+}
+
 fail() {
-  printf '[inter-agent] setup failed: %s. See %s\n' "$1" "$DOCS" >&2
+  printf '[inter-agent] setup failed: %s. See %s\n' "$(bounded_value "$1")" "$DOCS" >&2
   exit "${2:-1}"
 }
 
 usage() {
-  cat <<EOF
-Usage: inter-agent-claude bootstrap --yes [--source URL_OR_PATH] [--venv PATH] [--python PATH]
+  cat <<'EOF'
+Usage: inter-agent-claude setup --yes [--source URL_OR_PATH] [--venv PATH] [--python PATH]
 
-Creates the Claude-managed inter-agent runtime venv. Requires --yes so the
-skill can ask the user for approval before installing anything.
+Creates or repairs the Claude-managed inter-agent runtime venv. Requires --yes
+so the skill can ask the user for approval before installing anything.
 EOF
 }
 
@@ -56,18 +76,45 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      fail "unknown bootstrap option: $1" 2
+      fail "unknown setup option: $1" 2
       ;;
   esac
   shift
 done
 
 if [[ "$YES" != true ]]; then
-  printf '[inter-agent] setup approval required: rerun bootstrap with --yes. See %s\n' "$DOCS" >&2
+  printf '[inter-agent] setup approval required: rerun setup with --yes. See %s\n' "$DOCS" >&2
   exit 2
 fi
 
 VENV="$(expand_path "$VENV")"
+if [[ -z "$VENV" ]]; then
+  fail "managed venv path is empty" 2
+fi
+VENV="$(absolute_path "$VENV")"
+while [[ "$VENV" != "/" && "$VENV" == */ ]]; do
+  VENV="${VENV%/}"
+done
+
+case "$VENV" in
+  /|"$HOME"|/home|/root|/Users|/var|/usr|/opt|/etc|/bin|/sbin|/lib|/lib64|/dev|/proc|/sys|/run|/tmp|/mnt|/media|/srv)
+    fail "refusing unsafe managed venv path: $VENV" 2
+    ;;
+  */../*|*/..|../*|*/./*|*/.|./*|./|.)
+    fail "refusing unsafe managed venv path: $VENV" 2
+    ;;
+esac
+
+TARGET_EXISTS=false
+if [[ -e "$VENV" || -L "$VENV" ]]; then
+  TARGET_EXISTS=true
+  if [[ -L "$VENV" || ! -d "$VENV" ]]; then
+    fail "refusing to modify existing non-directory or symlink path: $VENV" 2
+  fi
+  if [[ ! -f "$VENV/pyvenv.cfg" || -L "$VENV/pyvenv.cfg" ]]; then
+    fail "existing path is not a verified virtual environment; manual inspection required: $VENV" 2
+  fi
+fi
 
 check_python() {
   "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
@@ -77,12 +124,11 @@ check_python() {
 PYTHON=""
 if [[ -n "$PYTHON_OVERRIDE" ]]; then
   candidate="$(expand_path "$PYTHON_OVERRIDE")"
-  if [[ -x "$candidate" && ! -d "$candidate" ]] && check_python "$candidate"; then
-    PYTHON="$candidate"
+  if [[ ! -x "$candidate" || -d "$candidate" ]] || ! check_python "$candidate"; then
+    fail "configured setup Python is not a usable Python 3.10+ interpreter: $candidate" 2
   fi
-fi
-
-if [[ -z "$PYTHON" ]]; then
+  PYTHON="$candidate"
+else
   for candidate in python3 python; do
     resolved="$(command -v "$candidate" || true)"
     if [[ -n "$resolved" ]] && check_python "$resolved"; then
@@ -96,24 +142,79 @@ if [[ -z "$PYTHON" ]]; then
   fail "Python 3.10+ not found"
 fi
 
-printf '[inter-agent] installing runtime from %s into %s\n' "$SOURCE" "$VENV"
+SOURCE_KIND="default tagged source"
+if [[ "$SOURCE" != "$DEFAULT_SOURCE" ]]; then
+  SOURCE_KIND="configured source"
+fi
+printf '[inter-agent] installing runtime from %s into %s\n' \
+  "$SOURCE_KIND" "$(bounded_value "$VENV")"
 
-if ! "$PYTHON" -m venv "$VENV"; then
-  fail "could not create venv at $VENV"
+needs_clear=false
+if [[ "$TARGET_EXISTS" == true ]]; then
+  HELPER="$VENV/bin/inter-agent-claude"
+  helper_usable=true
+  if [[ ! -f "$HELPER" || -L "$HELPER" || ! -x "$HELPER" || -d "$HELPER" ]]; then
+    helper_usable=false
+  else
+    shebang="$(head -n1 "$HELPER" 2>/dev/null || true)"
+    case "$shebang" in
+      '#!'*)
+        rest="${shebang#\#!}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        interp="${rest%%[[:space:]]*}"
+        if [[ -z "$interp" || ! -x "$interp" || -d "$interp" ]]; then
+          helper_usable=false
+        fi
+        ;;
+    esac
+  fi
+  if [[ "$helper_usable" != true ]]; then
+    needs_clear=true
+  fi
+fi
+
+venv_command=("$PYTHON" -m venv)
+if [[ "$needs_clear" == true ]]; then
+  venv_command+=(--clear)
+fi
+venv_command+=("$VENV")
+if ! "${venv_command[@]}" >/dev/null 2>&1; then
+  fail "could not create or repair venv at $VENV"
 fi
 
 VENV_PYTHON="$VENV/bin/python"
-if [[ ! -x "$VENV_PYTHON" ]]; then
+if [[ ! -x "$VENV_PYTHON" || -d "$VENV_PYTHON" ]]; then
   fail "venv python not found: $VENV_PYTHON"
 fi
 
-if ! "$VENV_PYTHON" -m pip install --upgrade "$SOURCE"; then
+if ! "$VENV_PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+  >/dev/null 2>&1; then
+  fail "venv Python is not viable: $VENV_PYTHON"
+fi
+
+if ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
+  fail "venv pip is unavailable: $VENV_PYTHON -m pip"
+fi
+
+if ! "$VENV_PYTHON" -m pip install --upgrade "$SOURCE" >/dev/null 2>&1; then
   fail "runtime install failed"
 fi
 
 HELPER="$VENV/bin/inter-agent-claude"
-if [[ ! -x "$HELPER" ]]; then
-  fail "installed helper missing: $HELPER"
+if [[ ! -f "$HELPER" || -L "$HELPER" || ! -x "$HELPER" || -d "$HELPER" ]]; then
+  fail "installed helper missing or not executable: $HELPER"
 fi
 
-printf '[inter-agent] runtime installed in %s\n' "$VENV"
+shebang="$(head -n1 "$HELPER" 2>/dev/null || true)"
+case "$shebang" in
+  '#!'*)
+    rest="${shebang#\#!}"
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+    interp="${rest%%[[:space:]]*}"
+    if [[ -z "$interp" || ! -x "$interp" || -d "$interp" ]]; then
+      fail "installed helper interpreter not executable: $interp"
+    fi
+    ;;
+esac
+
+printf '[inter-agent] runtime installed in %s\n' "$(bounded_value "$VENV")"
