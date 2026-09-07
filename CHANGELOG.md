@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+No unreleased changes.
+
+## 0.2.4
+
+Context-efficiency release for the Claude Code plugin.
+
+- Reduced the always-loaded `/inter-agent` skill by consolidating repeated
+  authorization, output, recovery, and peer-reaction guidance while preserving
+  the Monitor, setup, doctor, channel, and message safety contracts.
+- Updated static skill coverage to assert behavior rather than duplicated prose.
+- The plugin and marketplace manifests publish as `0.2.4`.
+- Managed setup defaults to the matching `inter-agent--v0.2.4` archive while
+  retaining helper source `0.3.0` and Core dependency `0.3.0`.
+
 - Replace the former user-facing managed-runtime command with
   `/inter-agent setup`, an explicitly approved managed-runtime installer using
   standard Python `venv` and the environment's pip. Missing, incomplete, and

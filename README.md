@@ -2,7 +2,7 @@
 
 [`inter-agent-claude-code`](https://github.com/arcanemachine/inter-agent-claude-code) connects Claude Code sessions to the local [inter-agent](https://github.com/arcanemachine/inter-agent) message bus.
 
-This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.3` provisions helper source `0.3.0` from the matching `inter-agent--v0.2.3` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
+This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.4` provisions helper source `0.3.0` from the matching `inter-agent--v0.2.4` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Inside Claude Code, run:
 /inter-agent setup
 ```
 
-Setup explains the installation and asks for explicit approval before creating or repairing the managed environment at `~/.claude/data/inter-agent/venv`. It installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by plugin release `0.2.3`. See [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) for source, approval, and recovery details.
+Setup explains the installation and asks for explicit approval before creating or repairing the managed environment at `~/.claude/data/inter-agent/venv`. It installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by plugin release `0.2.4`. See [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) for source, approval, and recovery details.
 
 The helper command is `inter-agent-claude`. The plugin's normal managed flow does not require a PyPI package or a local source checkout.
 

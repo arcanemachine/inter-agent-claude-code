@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "inter-agent",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Claude Code plugin marketplace for inter-agent messaging.",
   "owner": {
     "name": "Nicholas Moen",
@@ -11,7 +11,7 @@
     {
       "name": "inter-agent",
       "description": "Cross-host inter-agent messaging for Claude Code sessions.",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "author": {
         "name": "Nicholas Moen",
         "email": "arcanemachine@gmail.com"
