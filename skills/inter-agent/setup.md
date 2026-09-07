@@ -44,10 +44,10 @@ repairs the Claude-managed virtual environment at:
 ```
 
 It installs helper source `inter-agent-claude-code` `0.3.0` from the tagged
-standalone archive selected by plugin release `0.2.4`:
+standalone archive selected by plugin release `0.2.5`:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.4.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.5.zip
 ```
 
 Core `0.3.0` is installed from PyPI as the helper's exact runtime dependency

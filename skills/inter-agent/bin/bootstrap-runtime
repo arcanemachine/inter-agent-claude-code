@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DOCS="README.md#recovery-and-configuration"
-DEFAULT_SOURCE="https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.4.zip"
+DEFAULT_SOURCE="https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.5.zip"
 VENV="${INTER_AGENT_CLAUDE_VENV:-$HOME/.claude/data/inter-agent/venv}"
 SOURCE="${INTER_AGENT_CLAUDE_SETUP_SOURCE:-$DEFAULT_SOURCE}"
 PYTHON_OVERRIDE="${INTER_AGENT_CLAUDE_SETUP_PYTHON:-}"

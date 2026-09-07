@@ -1,6 +1,6 @@
 {
   "name": "inter-agent",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Cross-host inter-agent messaging for Claude Code sessions: connect a skill-driven Monitor listener, send and broadcast messages, join channels, and coordinate with other AI coding sessions.",
   "author": {
     "name": "Nicholas Moen",

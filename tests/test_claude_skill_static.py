@@ -31,7 +31,7 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     assert "/inter-agent bootstrap" not in skill
     assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in setup
     assert "~/.claude/data/inter-agent/venv" in setup
-    assert "refs/tags/v0.2.4.zip" in setup
+    assert "refs/tags/v0.2.5.zip" in setup
     assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in setup
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup
     assert "--source" in setup

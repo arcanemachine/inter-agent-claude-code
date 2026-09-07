@@ -4,6 +4,17 @@
 
 No unreleased changes.
 
+## 0.2.5
+
+Messaging workflow clarification release.
+
+- Documented silent `send` and `broadcast` success, bounded failures, and the
+  no-probe rule so a zero-output send is not treated as needing a test message.
+- Added stable wrapper resolution for direct, cross-skill, and programmatic
+  callers, including the enabled installed-plugin lookup fallback.
+- Moved hot-path receive and truncated-message handling beside send/broadcast
+  guidance and clarified that channels are for user-enrolled long-lived sessions.
+
 ## 0.2.4
 
 Context-efficiency release for the Claude Code plugin.
