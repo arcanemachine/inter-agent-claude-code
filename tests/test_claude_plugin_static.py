@@ -95,7 +95,7 @@ def test_claude_setup_source_and_documented_helper_version_are_mapped() -> None:
 
     plugin_version = plugin_manifest["version"]
     helper_version = project["project"]["version"]
-    assert f"inter-agent--v{plugin_version}.zip" in setup_script
+    assert f"v{plugin_version}.zip" in setup_script
     assert f"helper `inter-agent-claude` `{helper_version}`" in readme
     assert f"helper source `inter-agent-claude-code` `{helper_version}`" in setup
     core_version = project["project"]["dependencies"][0].split("==", 1)[1]
@@ -103,7 +103,7 @@ def test_claude_setup_source_and_documented_helper_version_are_mapped() -> None:
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup_script
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_PYTHON" not in setup_script
 
-    source_match = re.search(r"DEFAULT_SOURCE=.*inter-agent--v([0-9.]+)\.zip", setup_script)
+    source_match = re.search(r"DEFAULT_SOURCE=.*?/tags/v([0-9.]+)\.zip", setup_script)
     assert source_match is not None
     assert source_match.group(1) == plugin_version
 
