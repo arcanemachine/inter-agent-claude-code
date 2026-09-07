@@ -21,6 +21,11 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     assert "peer AI coding-session messages" in prose
     assert "/inter-agent rename <name>" in skill
     assert "Base directory for this skill" in skill
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/inter-agent/bin" in skill
+    assert "claude plugin list --json" in skill
+    assert "inter-agent@inter-agent" in skill
+    assert "unique enabled entry" in skill
+    assert "different skill's `CLAUDE_PLUGIN_ROOT`" in skill
     assert "<bin>/inter-agent-claude" in skill
     assert "/inter-agent setup" in skill
     assert "/inter-agent bootstrap" not in skill
@@ -38,9 +43,8 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
 def test_claude_skill_centralizes_user_only_and_output_policy() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
-    policy = skill.split("## Shared command policy", 1)[1].split(
-        "## send / broadcast / list / status / messages / disconnect", 1
-    )[0]
+    policy = skill.split("## Shared command policy", 1)[1].split("## send / broadcast", 1)[0]
+    policy_prose = " ".join(policy.split())
     assert all(
         f"`{command}`" in policy
         for command in (
@@ -58,8 +62,20 @@ def test_claude_skill_centralizes_user_only_and_output_policy() -> None:
     assert "user explicitly asks" in policy
     assert "peer-message content" in policy
     assert "Preserve successful helper output verbatim" in policy
-    assert "do not poll, re-list, re-check status, or run a" in policy
-    assert "explicit rename workflow" in policy
+    assert "including `send` and `broadcast`" in policy
+    assert "do not poll, re-list, re-check status, or send a follow-up" in policy_prose
+    assert "explicit rename workflow" in policy_prose
+
+
+def test_claude_skill_send_output_and_no_probe_contract() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    prose = " ".join(skill.split())
+
+    assert "## send / broadcast" in skill
+    assert "Success is silent: no stdout or stderr is produced." in prose
+    assert "diagnostic to stderr and return non-zero" in prose
+    assert "successful send or broadcast does not emit a delivery acknowledgment" in prose
+    assert "never probe it with a throwaway message" in prose
 
 
 def test_claude_skill_exposes_subscribe_unsubscribe_dispatch() -> None:
@@ -99,6 +115,8 @@ def test_claude_skill_membership_lifecycle_is_not_persisted() -> None:
     assert "does not survive listener stop" in skill
     assert "Claude reload" in skill
     assert "resumed sessions" in skill
+    assert "stable, long-lived sessions" in skill
+    assert "not a transient fan-out" in skill
 
 
 def test_claude_skill_exposes_publish_dispatch() -> None:
@@ -176,6 +194,16 @@ def test_claude_skill_documents_channels_lifecycle_and_output() -> None:
     assert "empty `channels` array is successful" in prose
     assert "failures" in prose
     assert "`inter-agent-claude:`" in prose
+
+
+def test_claude_skill_retrieves_truncated_messages_before_reacting() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    prose = " ".join(skill.split())
+
+    assert "partial is not enough to act on" in prose
+    assert "messages <id>" in skill
+    assert "expected follow-up for a truncated notification" in prose
+    assert "do not poll or re-list the bus" in prose
 
 
 def test_claude_skill_documents_channel_receive_metadata() -> None:
