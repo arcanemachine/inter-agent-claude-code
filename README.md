@@ -90,6 +90,18 @@ suggestion is text-only: doctor is never invoked automatically, and a doctor
 failure points back to package-loading and setup guidance instead of suggesting
 doctor recursively.
 
+## Status-line integration
+
+The plugin does not currently provide or configure a supported Claude Code
+status-line integration. External status-line commands must not parse files
+under `<data_dir>/claude-sessions/`; those files are internal adapter state, and
+their filenames and JSON fields are not stable external interfaces. The
+`status --json` command is also not a strictly read-only status-line API because
+status resolution can initialize or modify adapter state, locks, or
+fallback-token state. A supported inter-agent status-line indicator requires a
+stable, read-only interface; until then, use `/inter-agent status` for
+interactive inspection.
+
 ## Lifecycle and safety
 
 - `/inter-agent disconnect` stops only this Claude Code session's listener.
