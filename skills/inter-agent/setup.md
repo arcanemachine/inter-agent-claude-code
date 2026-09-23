@@ -44,10 +44,10 @@ repairs the Claude-managed virtual environment at:
 ```
 
 It installs helper source `inter-agent-claude-code` `0.3.0` from the tagged
-standalone archive selected by plugin release `0.2.5`:
+standalone archive selected by plugin release `0.2.6`:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.5.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.6.zip
 ```
 
 Core `0.3.0` is installed from PyPI as the helper's exact runtime dependency
@@ -154,10 +154,10 @@ Claude helper package from PyPI.
 
 ## Connect fallback
 
-Try the persistent Monitor from `SKILL.md` first and wait for a connected line.
+Try the listener Monitor from `SKILL.md` first and wait for a connected line.
 Do not use `status` or `list` as pre-checks.
 
-Only if the **persistent** Monitor task exits without a connected or
+Only if the **listener Monitor** task exits without a connected or
 already-connected line, run one fallback:
 
 ```bash
@@ -187,14 +187,13 @@ Then run `<bin>/inter-agent-claude list`, pick a unique name, and reconnect. If
 a listener was killed with `kill -9` instead of `/inter-agent disconnect`, the
 server may hold the name for up to ~40s; wait or choose a unique name.
 
-## Persistent Monitor wrapper behavior
+## Listener Monitor wrapper behavior
 
-Empirically, Claude Code may render a persistent Monitor as two task entries: a
+Empirically, Claude Code may render the listener Monitor as two task entries: a
 launcher wrapper that exits right after starting the listener (you may see
-`Monitor "..." stream ended`) and the real persistent watch, which keeps
-running.
+`Monitor "..." stream ended`) and the real listener watch, which keeps running.
 
-Do not treat the wrapper exit as failure while the persistent task is still
+Do not treat the wrapper exit as failure while the listener task is still
 running. Keep waiting for `[inter-agent] connected as "<name>"` or
 `[inter-agent] already connected as "<name>"; no new listener started.` Only one
 `inter-agent-claude listen` process actually runs.

@@ -70,13 +70,24 @@ connection checks. Stop any prior listener with `/inter-agent disconnect` or
 Monitor(
   command="<bin>/inter-agent-claude listen --name <name>",
   description="inter-agent bus messages",
-  persistent=true
+  persistent=true,
+  timeout_ms=2147483647
 )
 ```
 
-`persistent=true` runs the listener for the session lifetime with no timeout;
-do not add `timeout_ms`. The listener auto-names from cwd if no name is given.
-The server auto-starts if needed and idles out after 300s with no connections.
+When a `[Monitor expired ...]` notice arrives for `inter-agent bus messages`,
+restart the listener immediately with the same Monitor call and name. Do not
+report the expiry to the user or treat it as a failure.
+
+When Monitor reports `timeout_ms must be ≤ ...`, retry once with the same call
+and name using `timeout_ms=3600000`. Claude Code builds that still offer
+`persistent` ignore `timeout_ms` and run the listener for the session; builds
+without `persistent` drop that field and use `timeout_ms` as the deadline. A
+patched binary can accept the long deadline above, while stock capped builds may
+reject it.
+
+The listener auto-names from cwd if no name is given. The server auto-starts if
+needed and idles out after 300s with no connections.
 
 For `/inter-agent rename <name>`, stop the running task whose description is
 `"inter-agent bus messages"` using TaskList/TaskStop, then start the Monitor
@@ -96,7 +107,7 @@ explicit user approval, and use `/inter-agent setup`. A runtime-selection
 failure (exit `4`) is source-specific: fix or remove an explicit helper or
 project-path override, or use `/inter-agent setup` for a broken managed runtime.
 Preserve the wrapper's one-line bounded diagnosis and never interpolate it into
-a command. Only if the persistent Monitor exits without a
+a command. Only if the listener Monitor exits without a
 connected/already-connected line, read
 `setup.md` for connect fallback, name-conflict, and Monitor wrapper details. Do
 not manually run `inter-agent-claude listen` in Bash.

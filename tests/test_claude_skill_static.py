@@ -31,13 +31,33 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     assert "/inter-agent bootstrap" not in skill
     assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in setup
     assert "~/.claude/data/inter-agent/venv" in setup
-    assert "refs/tags/v0.2.5.zip" in setup
+    assert "refs/tags/v0.2.6.zip" in setup
     assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in setup
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup
     assert "--source" in setup
     assert "--yes" in setup
     assert "status --json" in doctor
     assert "cannot be established" in doctor
+
+
+def test_claude_skill_monitor_has_deadline_fallback_and_expiry_recovery() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+
+    assert (
+        "Monitor(\n"
+        '  command="<bin>/inter-agent-claude listen --name <name>",\n'
+        '  description="inter-agent bus messages",\n'
+        "  persistent=true,\n"
+        "  timeout_ms=2147483647\n"
+        ")" in skill
+    )
+    assert "When Monitor reports `timeout_ms must be ≤ ...`, retry once" in skill
+    assert "using `timeout_ms=3600000`" in skill
+    assert "When a `[Monitor expired ...]` notice arrives for `inter-agent bus messages`" in skill
+    assert "restart the listener immediately with the same Monitor call and name" in skill
+    assert "Do not report the expiry to the user or treat it as a failure." in " ".join(
+        skill.split()
+    )
 
 
 def test_claude_skill_centralizes_user_only_and_output_policy() -> None:

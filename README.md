@@ -2,7 +2,7 @@
 
 [`inter-agent-claude-code`](https://github.com/arcanemachine/inter-agent-claude-code) connects Claude Code sessions to the local [inter-agent](https://github.com/arcanemachine/inter-agent) message bus.
 
-This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.5` provisions helper source `0.3.0` from the matching `v0.2.5` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
+This repository provides the `inter-agent` Claude Code plugin and marketplace, the `/inter-agent` skill, the bundled runtime wrappers, and the `inter-agent-claude` helper command. Installing the plugin and provisioning its Python runtime are separate steps in the setup flow. The helper is distributed from this Git repository rather than PyPI. Plugin release `0.2.6` provisions helper source `0.3.0` from the matching `v0.2.6` tag; Core `0.3.0` is installed from PyPI as that helper's runtime dependency.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Inside Claude Code, run:
 /inter-agent setup
 ```
 
-Setup explains the installation and asks for explicit approval before creating or repairing the managed environment at `~/.claude/data/inter-agent/venv`. It installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by plugin release `0.2.5`. See [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) for source, approval, and recovery details.
+Setup explains the installation and asks for explicit approval before creating or repairing the managed environment at `~/.claude/data/inter-agent/venv`. It installs helper `inter-agent-claude` `0.3.0` from the tagged standalone source selected by plugin release `0.2.6`. See [`skills/inter-agent/setup.md`](skills/inter-agent/setup.md) for source, approval, and recovery details.
 
 The helper command is `inter-agent-claude`. The plugin's normal managed flow does not require a PyPI package or a local source checkout.
 
@@ -49,7 +49,7 @@ To see a reply, connect a second Claude Code session as `other-agent`:
 /inter-agent send my-agent hello back
 ```
 
-Replies arrive as persistent Monitor notifications; do not poll for them. `/inter-agent connect` starts one session-scoped listener and may auto-start a local server. If no name is supplied, the skill derives one from the working directory.
+Replies arrive as Monitor listener notifications; do not poll for them. `/inter-agent connect` starts one listener and may auto-start a local server. If no name is supplied, the skill derives one from the working directory.
 
 ## Read-only doctor (troubleshooting path)
 
@@ -118,7 +118,7 @@ Use direct messages for ordinary coordination. Broadcast only when every connect
 | --- | --- |
 | `setup` | Install or repair the managed Python runtime after explicit approval. |
 | `doctor [optional context]` | Run bounded, read-only host and runtime diagnostics. |
-| `connect [name]` | Start this session's persistent Monitor listener. |
+| `connect [name]` | Start this session's Monitor listener. |
 | `rename <name>` | Reconnect under another routing name. |
 | `disconnect` | Stop this session's listener. |
 | `send <name-or-prefix> <text>` | Send a direct message. |

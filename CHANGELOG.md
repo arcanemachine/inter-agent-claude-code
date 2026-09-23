@@ -4,6 +4,14 @@
 
 No unreleased changes.
 
+## 0.2.6
+
+- Made the Monitor listener survive removal of `persistent` in Claude Code
+  2.1.278+ by passing a long `timeout_ms`, with capped-build fallback and expiry
+  recovery guidance.
+- Synchronized the plugin and marketplace at `0.2.6` and updated managed setup
+  to use the matching `v0.2.6` source archive.
+
 ## 0.2.5
 
 Messaging workflow clarification release.

@@ -202,7 +202,7 @@ def test_claude_setup_source_uses_tagged_archive_and_new_overrides() -> None:
     script = SETUP.read_text(encoding="utf-8")
 
     expected_source = (
-        "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.5.zip"
+        "https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.6.zip"
     )
     assert expected_source in script
     assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in script
