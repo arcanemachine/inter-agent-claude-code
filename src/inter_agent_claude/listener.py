@@ -21,7 +21,7 @@ from typing import TextIO
 import websockets
 from inter_agent.core import adapter_control as control
 from inter_agent.core.client import AgentSession
-from inter_agent.core.shared import DEFAULT_HOST, DEFAULT_PORT, resolve_endpoint
+from inter_agent.core.shared import DEFAULT_HOST, DEFAULT_PORT, resolve_endpoint, validate_name
 
 from inter_agent_claude import formatting, state
 
@@ -111,6 +111,7 @@ class Listener:
         data_dir: Path | None = None,
         tls_cert_path: Path | None = None,
         tls_key_path: Path | None = None,
+        remember_name: bool = False,
     ) -> None:
         self.host = host
         self.port = port
@@ -119,6 +120,7 @@ class Listener:
         self.tls_cert_path = tls_cert_path
         self.tls_key_path = tls_key_path
         self.name = name
+        self.remember_name = remember_name
         self.label = label
         self.session_id = session_id or str(uuid.uuid4())
         self.nonce = secrets.token_urlsafe(16)
@@ -131,6 +133,8 @@ class Listener:
         self._session: AgentSession | None = None
         self._desired_channels: set[str] = set()
         self._control_server: control.ControlServer | None = None
+        self._pending_name: str | None = None
+        self._renamed_from: str | None = None
 
     def stop(self) -> None:
         self._stop.set()
@@ -139,6 +143,22 @@ class Listener:
             t.cancel()
         # Do not kill self._server_proc here — the auto-started server's
         # idle timeout handles shutdown when no connections remain.
+
+    def request_rename(self) -> None:
+        """Reconnect under this session's remembered name if it changed.
+
+        Runs on SIGUSR1 from `inter-agent-claude connect --name`. The process
+        stays alive, so a host-armed plugin monitor keeps running.
+        """
+        name = state.read_persisted_name()
+        if name is None or not validate_name(name):
+            return
+        if name == self.name and self._pending_name is None:
+            return
+        self._pending_name = name
+        t = self._connect_task
+        if t is not None and not t.done():
+            t.cancel()
 
     def _start_server(self) -> subprocess.Popen[bytes] | None:
         """Start inter-agent-server as a child process.
@@ -186,19 +206,11 @@ class Listener:
             existing = state.read_session_state(ppid)
             if existing:
                 existing_name = str(existing.get("name", ""))
-                if existing_name == self.name:
-                    _print_line(
-                        f'[inter-agent] already connected as "{existing_name}"; '
-                        "no new listener started.",
-                        self.output,
-                    )
-                else:
-                    _print_line(
-                        "[inter-agent] another listener is already running "
-                        f'as "{existing_name}"; disconnect before connecting as '
-                        f'"{self.name}". No new listener started.',
-                        self.output,
-                    )
+                _print_line(
+                    f'[inter-agent] already connected as "{existing_name}"; '
+                    "no new listener started.",
+                    self.output,
+                )
             else:
                 _print_line(
                     "[inter-agent] another listener is already starting or running; "
@@ -208,6 +220,12 @@ class Listener:
             return 0
 
         try:
+            if self.remember_name:
+                try:
+                    state.write_persisted_name(self.name)
+                except OSError:
+                    pass
+            self._write_state(ppid, connected=False)
             # Auto-start server if the configured endpoint is unavailable.
             if not endpoint_available(self.host, self.port):
                 self._server_proc = self._start_server()
@@ -232,15 +250,29 @@ class Listener:
 
             backoff = RECONNECT_BACKOFF_MIN_S
             deadline: float | None = None
+            deadline_reported = False
+            server_restarted = False
             name_retry_used = False
             while not self._stop.is_set():
+                if self._pending_name is not None:
+                    if self._pending_name != self.name:
+                        self._renamed_from = self.name
+                        self.name = self._pending_name
+                        self._write_state(ppid, connected=False)
+                    self._pending_name = None
+                    name_retry_used = False
                 self._connect_task = asyncio.create_task(self._connect_and_serve(ppid))
                 try:
                     await self._connect_task
                     backoff = RECONNECT_BACKOFF_MIN_S
                     deadline = None
+                    deadline_reported = False
+                    server_restarted = False
                 except asyncio.CancelledError:
-                    pass
+                    if self._pending_name is not None:
+                        backoff = RECONNECT_BACKOFF_MIN_S
+                        deadline = None
+                        continue
                 except (ConnectionRefusedError, OSError) as exc:
                     log.info("connect failed: %s", exc)
                 except websockets.InvalidHandshake as exc:
@@ -250,6 +282,22 @@ class Listener:
                     )
                     return 1
                 except PermanentError as exc:
+                    if exc.code == "NAME_TAKEN" and self._renamed_from is not None:
+                        rejected = self.name
+                        self.name = self._renamed_from
+                        self._renamed_from = None
+                        try:
+                            state.write_persisted_name(self.name)
+                        except OSError:
+                            pass
+                        _print_line(
+                            f'[inter-agent] name "{rejected}" is already in use; '
+                            f'keeping "{self.name}".',
+                            self.output,
+                        )
+                        backoff = RECONNECT_BACKOFF_MIN_S
+                        deadline = None
+                        continue
                     if exc.code == "NAME_TAKEN" and not name_retry_used:
                         old_name = self.name
                         self.name = _retry_name(old_name)
@@ -282,15 +330,29 @@ class Listener:
                 if self._stop.is_set():
                     break
 
+                # The listener may be a host-armed plugin monitor that cannot be
+                # re-armed, so transient failures never end it.
                 if deadline is None:
                     deadline = asyncio.get_running_loop().time() + RECONNECT_DEADLINE_S
-                if asyncio.get_running_loop().time() >= deadline:
+                if (
+                    not server_restarted
+                    and not endpoint_available(self.host, self.port)
+                    and (self._server_proc is None or self._server_proc.poll() is not None)
+                ):
+                    server_restarted = True
+                    self._server_proc = self._start_server()
+                    if self._server_proc is not None:
+                        _print_line(
+                            f"[inter-agent] restarted server (pid {self._server_proc.pid})",
+                            self.output,
+                        )
+                if not deadline_reported and asyncio.get_running_loop().time() >= deadline:
+                    deadline_reported = True
                     _print_line(
                         "[inter-agent] could not reconnect within "
-                        f"{RECONNECT_DEADLINE_S:.0f}s; giving up",
+                        f"{RECONNECT_DEADLINE_S:.0f}s; still retrying",
                         self.output,
                     )
-                    return 1
 
                 jitter = backoff * RECONNECT_JITTER_FRAC
                 delay = backoff + random.uniform(-jitter, jitter)
@@ -443,6 +505,20 @@ class Listener:
                 )
                 await self._control_server.stop()
                 self._control_server = None
+        self._write_state(ppid, connected=True)
+        if self._renamed_from is not None:
+            _print_line(
+                f'[inter-agent] renamed "{self._renamed_from}" -> "{self.name}"',
+                self.output,
+            )
+            self._renamed_from = None
+        else:
+            _print_line(
+                f'[inter-agent] connected as "{self.name}"',
+                self.output,
+            )
+
+    def _write_state(self, ppid: int, connected: bool) -> None:
         state.write_session_state(
             ppid,
             {
@@ -455,11 +531,9 @@ class Listener:
                 "port": self.port,
                 "scheme": "wss" if self.tls else "ws",
                 "tls": self.tls,
+                "connected": connected,
+                "rename_signal": "SIGUSR1",
             },
-        )
-        _print_line(
-            f'[inter-agent] connected as "{self.name}"',
-            self.output,
         )
 
     def _on_msg(self, payload: dict[str, object]) -> None:
@@ -521,12 +595,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     name = args.name
-    if not name:
-        name = _auto_name_from_cwd()
-        _print_line(
-            f"[inter-agent] no --name given; auto-named {name!r} from cwd",
-            sys.stdout,
-        )
+    state.prune_persisted_names()
+    if name:
+        if not validate_name(name):
+            _print_line(
+                f"[inter-agent] invalid name {name!r}: use 1-40 lowercase letters, "
+                "digits, or hyphens, starting with a letter or digit.",
+                sys.stdout,
+            )
+            return 2
+    else:
+        persisted = state.read_persisted_name()
+        if persisted is not None and validate_name(persisted):
+            name = persisted
+        else:
+            name = _auto_name_from_cwd()
+            _print_line(
+                f"[inter-agent] no --name given; auto-named {name!r} from cwd",
+                sys.stdout,
+            )
 
     endpoint = resolve_endpoint(
         args.host,
@@ -546,6 +633,7 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=endpoint.data_dir,
         tls_cert_path=endpoint.tls_cert_path,
         tls_key_path=endpoint.tls_key_path,
+        remember_name=bool(args.name),
     )
 
     loop = asyncio.new_event_loop()
@@ -554,6 +642,10 @@ def main(argv: list[str] | None = None) -> int:
             loop.add_signal_handler(sig, listener.stop)
         except NotImplementedError:
             pass
+    try:
+        loop.add_signal_handler(signal.SIGUSR1, listener.request_rename)
+    except NotImplementedError:
+        pass
     try:
         return loop.run_until_complete(listener.run())
     finally:

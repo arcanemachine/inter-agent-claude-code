@@ -4,6 +4,37 @@
 
 No unreleased changes.
 
+## 0.2.7
+
+Plugin-monitor listener release.
+
+- Claude Code now starts the listener as a plugin monitor (`monitors/monitors.json`)
+  the first time `/inter-agent` runs in a session. Plugin monitors run for the
+  whole session, while stock Claude Code stops Monitor-tool watches after 30
+  minutes. The monitor arms for both the `inter-agent:inter-agent` and bare
+  `inter-agent` skill names.
+- `connect [--name <name>]` (and `rename <name>`) name the running listener in
+  place: the helper remembers the name per Claude Code session
+  (`CLAUDE_CODE_SESSION_ID`) and signals the listener, which reconnects under
+  the new name without exiting and keeps its channel subscriptions. A rename to
+  a taken name keeps the old name. Exit `5` means no listener runs, and the
+  skill then starts a fallback Monitor without `--name`.
+- `listen` without `--name` uses the remembered name before deriving one from
+  the working directory; an explicit invalid name is rejected up front.
+- The listener publishes a not-yet-connected state while starting, so senders do
+  not use a name that is not registered yet. `connect` only signals listeners that
+  advertise in-place rename, so an older listener is never killed by `SIGUSR1`.
+- Transient connection failures no longer end the listener after 60 seconds: it
+  keeps retrying and restarts a vanished auto-started server once per outage.
+- A second listener start in the same session always reports
+  `already connected as "<name>"`; an explicit name is remembered only by the
+  listener that owns the session. Remembered names not written for 30 days are
+  pruned when a listener starts.
+- A plugin update does not update the managed runtime: rerun `/inter-agent
+  setup`. The skill recognizes an outdated helper's `connect` output.
+- Helper `0.3.1`; plugin and marketplace `0.2.7`; managed setup uses the
+  matching `v0.2.7` source archive.
+
 ## 0.2.6
 
 - Made the Monitor listener survive removal of `persistent` in Claude Code

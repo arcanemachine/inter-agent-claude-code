@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "inter-agent-claude-code"
-version = "0.3.0"
-description = "Claude Code helper for the inter-agent message bus: connect a skill-driven Monitor listener and command-line tools"
+version = "0.3.1"
+description = "Claude Code helper for the inter-agent message bus: a session-long plugin-monitor listener and command-line tools"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

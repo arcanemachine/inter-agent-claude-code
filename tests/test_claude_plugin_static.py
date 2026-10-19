@@ -52,30 +52,38 @@ def test_claude_marketplace_manifest_points_to_claude_plugin() -> None:
     assert ((ROOT / source) / "skills" / "inter-agent" / "SKILL.md").is_file()
 
 
-def test_claude_plugin_manifest_declares_no_declarative_monitors() -> None:
-    """The plugin must not declare an `on-skill-invoke` Monitor.
+def test_claude_plugin_monitors_are_loaded_from_default_path() -> None:
+    """Claude Code loads monitors/monitors.json when plugin.json omits `monitors`.
 
-    A plugin-declared Monitor would race the skill-driven
-    `inter-agent-claude listen --name <name>` Monitor for the same per-session
-    flock and emit a confusing "another listener is already starting or
-    running" line (and, because the declarative command carries no `--name`,
-    could connect under the wrong cwd-derived name if it won the race).
-    Connect is driven solely by the `/inter-agent` skill, which starts a
-    single Monitor with the user's chosen routing name.
+    The top-level `monitors` key fails strict validation as experimental, so
+    the plugin relies on the default path instead.
     """
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
-    assert "monitors" not in manifest, (
-        "plugin.json must not declare a monitors entry; the listener is "
-        "started on demand by the /inter-agent skill with the user's name"
-    )
+    assert "monitors" not in manifest
+    assert (MONITORS_DIR / "monitors.json").is_file()
 
 
-def test_claude_plugin_has_no_monitors_directory() -> None:
-    """No plugin-declared Monitor assets should ship with the repository."""
-    assert not MONITORS_DIR.exists(), (
-        "monitors/ must not exist; a plugin-declared Monitor races the "
-        "skill-driven listener and causes duplicate launches"
-    )
+def test_claude_plugin_monitor_arms_listener_on_skill_invoke() -> None:
+    """The host-armed listener runs for the whole session, unlike a tool Monitor.
+
+    Claude Code matches `on-skill-invoke:<name>` against the name the skill was
+    dispatched under: the slash command uses `inter-agent:inter-agent`, while a
+    Skill tool call may use the bare `inter-agent`. One entry per form; the
+    per-session flock makes a second arm exit cleanly.
+    """
+    monitors = json.loads((MONITORS_DIR / "monitors.json").read_text(encoding="utf-8"))
+    assert isinstance(monitors, list)
+    assert {m["when"] for m in monitors} == {
+        "on-skill-invoke:inter-agent:inter-agent",
+        "on-skill-invoke:inter-agent",
+    }
+    assert len({m["name"] for m in monitors}) == len(monitors)
+    for monitor in monitors:
+        assert monitor["command"] == (
+            '"${CLAUDE_PLUGIN_ROOT}/skills/inter-agent/bin/inter-agent-claude" listen'
+        )
+        assert "--name" not in monitor["command"]
+        assert monitor["description"] == "inter-agent bus messages"
 
 
 def test_claude_plugin_and_marketplace_versions_are_synchronized() -> None:

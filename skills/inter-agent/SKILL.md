@@ -5,7 +5,7 @@ description: |
   sessions on the same machine. Use this skill to send direct messages,
   broadcast to all connected sessions, list peers, check server status, and
   receive incoming messages as notifications.
-allowed-tools: [Bash, Monitor, TaskList, TaskStop]
+allowed-tools: [Bash, Monitor]
 ---
 
 # inter-agent
@@ -42,11 +42,11 @@ When the user invokes `/inter-agent [args]`, parse `args` to dispatch:
 
 | User input | Action |
 |------------|--------|
-| `/inter-agent` or `/inter-agent connect` | Connect, auto-name from cwd. |
+| `/inter-agent` or `/inter-agent connect` | Connect under this session's remembered name, else auto-name from cwd. |
 | `/inter-agent connect <name>` | Connect with the given name. |
 | `/inter-agent setup` | Install or repair the managed runtime only after explicit user approval; read `setup.md` first. |
 | `/inter-agent doctor [optional context]` | Run bounded, read-only host and runtime diagnostics; never repair or connect. |
-| `/inter-agent rename <name>` | Stop this session's listener and reconnect with the new name. |
+| `/inter-agent rename <name>` | Rename the running listener in place (same as `connect <name>`). |
 | `/inter-agent send <name-or-prefix> <text>` | Direct message to one session. |
 | `/inter-agent broadcast <text>` | Message all sessions. Only when the user explicitly asks to notify everyone. |
 | `/inter-agent list` | List connected sessions. |
@@ -62,43 +62,78 @@ When the user invokes `/inter-agent [args]`, parse `args` to dispatch:
 
 ## connect / rename
 
-Start exactly one Monitor. Do not run `status` or `list` first — they are not
-connection checks. Stop any prior listener with `/inter-agent disconnect` or
-`/inter-agent rename <name>` before connecting again.
+With the plugin installed, Claude Code itself starts the listener the first
+time this skill runs in a session (a plugin monitor described
+`inter-agent bus messages`) and keeps it for the whole session. Your job is only
+to name it. Do not run `status` or `list` first — they are not connection
+checks. Run one Bash command:
+
+```bash
+<bin>/inter-agent-claude connect               # /inter-agent or /inter-agent connect
+<bin>/inter-agent-claude connect --name <name> # /inter-agent connect <name> or rename <name>
+```
+
+It remembers the name for this Claude Code session, waits for a listener that
+is still starting, and renames a running listener in place without stopping
+it. If it prints `Use '/inter-agent connect'` or `unrecognized arguments`, the
+helper runtime is older than this plugin: tell the user to run
+`/inter-agent setup` to update it, and stop. Otherwise act on the exit code:
+
+- `0` — stdout is `connected as "<name>"` or `renamed "<old>" -> "<name>"`.
+  Report the name; done.
+- `1` — stderr says why. `name "<name>" is already in use` means another live
+  session holds it (this session stays connected under its old name): run
+  `list`, then pick another name or ask the user. `predates in-place rename` means the running listener is from an older
+  helper: run `disconnect`, then `connect` again (it exits `5`; start the
+  fallback Monitor).
+- `2` — invalid name (1-40 lowercase letters, digits, or hyphens, starting
+  with a letter or digit). Tell the user.
+- `5` — no listener runs in this session (no plugin monitor: a standalone
+  skill install; or the listener exited earlier this session, for example after
+  `disconnect`, a kick, or a first skill use before setup installed the runtime;
+  Claude Code starts the plugin monitor only once per session). Start the
+  fallback Monitor below.
+
+The plugin monitor starts on the first `/inter-agent` use of any kind in a
+session, including `setup` or `doctor`; that is Claude Code arming the plugin,
+not the skill connecting.
+
+### Fallback Monitor
+
+Only after `connect` exits `5`. Pass no `--name`: the listener uses the name
+`connect` remembered, else auto-names from cwd.
 
 ```
 Monitor(
-  command="<bin>/inter-agent-claude listen --name <name>",
+  command="<bin>/inter-agent-claude listen",
   description="inter-agent bus messages",
   persistent=true,
-  timeout_ms=2147483647
+  timeout_ms=3600000
 )
 ```
 
-When a `[Monitor expired ...]` notice arrives for `inter-agent bus messages`,
-restart the listener immediately with the same Monitor call and name. Do not
-report the expiry to the user or treat it as a failure.
+Builds that offer `persistent` keep this listener for the session. Newer builds
+ignore `persistent` and stop Monitor-tool watches at their deadline (30 minutes
+on stock Claude Code). When a `[Monitor expired ...]` or `[Monitor timed out
+...]` notice arrives for `inter-agent bus messages`, start the same fallback
+Monitor again immediately. Do not report the expiry to the user or treat it as
+a failure. If Monitor rejects `persistent` or `timeout_ms`, retry once without
+`persistent` and with `timeout_ms=1800000`.
 
-When Monitor reports `timeout_ms must be ≤ ...`, retry once with the same call
-and name using `timeout_ms=3600000`. Claude Code builds that still offer
-`persistent` ignore `timeout_ms` and run the listener for the session; builds
-without `persistent` drop that field and use `timeout_ms` as the deadline. A
-patched binary can accept the long deadline above, while stock capped builds may
-reject it.
+The server auto-starts if needed and idles out after 300s with no connections.
 
-The listener auto-names from cwd if no name is given. The server auto-starts if
-needed and idles out after 300s with no connections.
+Listener output lines in the monitor:
 
-For `/inter-agent rename <name>`, stop the running task whose description is
-`"inter-agent bus messages"` using TaskList/TaskStop, then start the Monitor
-above with the new name. If no task is visible, run `<bin>/inter-agent-claude
-disconnect` once before starting the new Monitor.
-
-Connection success lines:
-
-- `[inter-agent] connected as "<name>"` — connected; stop there.
-- `[inter-agent] already connected as "<name>"; no new listener started.` — this
-  session already has the active listener; stop there.
+- `[inter-agent] connected as "<name>"` — connected.
+- `[inter-agent] renamed "<old>" -> "<name>"` — an in-place rename finished.
+- `[inter-agent] name "<new>" is already in use; keeping "<old>".` — a rename
+  was rejected; the listener stays connected as `<old>`.
+- `[inter-agent] already connected as "<name>"; no new listener started.` — a
+  second start found this session's listener. If `<name>` is not the wanted
+  name, run `connect --name <wanted>` once.
+- `[inter-agent] could not reconnect within 60s; still retrying` and
+  `[inter-agent] restarted server (pid <pid>)` — the listener keeps retrying on
+  its own; do not restart it.
 - `[inter-agent] name "<old>" is already in use; retrying as "<old>-2".` — the
   listener is retrying automatically; wait for the connected line.
 
@@ -107,10 +142,9 @@ explicit user approval, and use `/inter-agent setup`. A runtime-selection
 failure (exit `4`) is source-specific: fix or remove an explicit helper or
 project-path override, or use `/inter-agent setup` for a broken managed runtime.
 Preserve the wrapper's one-line bounded diagnosis and never interpolate it into
-a command. Only if the listener Monitor exits without a
-connected/already-connected line, read
-`setup.md` for connect fallback, name-conflict, and Monitor wrapper details. Do
-not manually run `inter-agent-claude listen` in Bash.
+a command. Only if the listener exits without a connected/already-connected
+line, read `setup.md` for connect fallback, name-conflict, and Monitor wrapper
+details. Do not manually run `inter-agent-claude listen` in Bash.
 
 ## setup
 
@@ -159,8 +193,8 @@ confirmation solely to verify the result. Retrieving `messages <id>` for a
 truncated notification is the explicit content-retrieval exception; after
 retrieving it, read and react as appropriate. The other exceptions are an
 explicitly approved setup followed by retrying the user's still-requested
-original operation after setup succeeds, and the explicit rename workflow's
-required listener stop and restart.
+original operation after setup succeeds, and starting the fallback Monitor
+after `connect` exits `5`.
 
 ## send / broadcast
 
@@ -223,6 +257,10 @@ Short-lived Bash commands delegating to the wrapper:
 <bin>/inter-agent-claude status
 <bin>/inter-agent-claude disconnect
 ```
+
+`disconnect` stops the listener process. Claude Code does not restart a
+stopped plugin monitor in the same session, so a later `connect` exits `5` and
+uses the fallback Monitor.
 
 ## publish
 

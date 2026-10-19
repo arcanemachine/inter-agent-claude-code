@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 EXPECTED_NAME = "inter-agent-claude-code"
-EXPECTED_VERSION = "0.3.0"
+EXPECTED_VERSION = "0.3.1"
 EXPECTED_CORE_DEP = "inter-agent-core==0.3.0"
 EXPECTED_WS_DEP = "websockets==16.0"
 

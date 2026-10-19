@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 
 from inter_agent.core import adapter_control as control
@@ -18,7 +19,12 @@ from inter_agent.core import send as core_send
 from inter_agent.core import shutdown as core_shutdown
 from inter_agent.core import status as core_status
 from inter_agent.core.send import SendResult
-from inter_agent.core.shared import Limits, resolve_endpoint, validate_channel_name
+from inter_agent.core.shared import (
+    Limits,
+    resolve_endpoint,
+    validate_channel_name,
+    validate_name,
+)
 from websockets.exceptions import WebSocketException
 
 from inter_agent_claude import dedup, state
@@ -47,10 +53,92 @@ def _send_result_code(result: SendResult) -> int:
     return 0
 
 
-def connect(name: str, label: str | None = None) -> int:
-    """Connect is handled by the Monitor listener; this is a no-op for CLI use."""
-    print("Use '/inter-agent connect' in Claude Code to start the listener.")
-    return 0
+CONNECT_START_GRACE_S = 5.0
+CONNECT_TIMEOUT_S = 30.0
+CONNECT_POLL_S = 0.1
+NO_LISTENER_EXIT = 5
+
+
+def connect(name: str | None, wait_s: float = CONNECT_TIMEOUT_S) -> int:
+    """Name this session's running listener, renaming it in place if needed.
+
+    The listener itself is started by Claude Code (plugin monitor) or by the
+    skill's fallback Monitor. This command remembers the wanted name, waits
+    for a listener that is still starting, and signals it to reconnect under
+    the new name. Exit 5 means no listener runs in this session.
+    """
+    if name is not None:
+        if not validate_name(name):
+            print(
+                f"inter-agent-claude: invalid name {name!r}: use 1-40 lowercase letters, "
+                "digits, or hyphens, starting with a letter or digit",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            state.write_persisted_name(name)
+        except OSError as exc:
+            return _expected_error_code(exc)
+
+    start = time.monotonic()
+    deadline = start + wait_s
+    grace_end = start + min(CONNECT_START_GRACE_S, wait_s)
+    signalled_from: str | None = None
+    while True:
+        found_state, _path = state.find_listener_state()
+        listener_pid = found_state.get("listener_pid") if found_state else None
+        now = time.monotonic()
+        if found_state is None or not state.listener_alive(listener_pid):
+            if now < grace_end:
+                time.sleep(CONNECT_POLL_S)
+                continue
+            saved = " (name saved)" if name is not None else ""
+            print(
+                f"inter-agent-claude: no listener is running in this session{saved}",
+                file=sys.stderr,
+            )
+            return NO_LISTENER_EXIT
+
+        current = str(found_state.get("name", ""))
+        connected = found_state.get("connected") is not False
+        if connected and (name is None or current == name):
+            if signalled_from is not None and signalled_from != current:
+                print(f'renamed "{signalled_from}" -> "{current}"')
+            else:
+                print(f'connected as "{current}"')
+            return 0
+
+        if name is not None and current != name:
+            if signalled_from is None and connected:
+                if found_state.get("rename_signal") != "SIGUSR1" or not isinstance(
+                    listener_pid, int
+                ):
+                    print(
+                        f'inter-agent-claude: the running listener ("{current}") predates '
+                        "in-place rename; run disconnect, then connect again",
+                        file=sys.stderr,
+                    )
+                    return 1
+                try:
+                    os.kill(listener_pid, signal.SIGUSR1)
+                except OSError as exc:
+                    return _expected_error_code(exc)
+                signalled_from = current
+            elif signalled_from is not None and state.read_persisted_name() != name:
+                print(
+                    f'inter-agent-claude: name "{name}" is already in use; '
+                    f'still connected as "{current}"',
+                    file=sys.stderr,
+                )
+                return 1
+
+        if now >= deadline:
+            print(
+                f"inter-agent-claude: listener did not connect within {wait_s:.0f}s",
+                file=sys.stderr,
+            )
+            return 1
+        time.sleep(CONNECT_POLL_S)
 
 
 def _connected_from_name() -> str | None:
@@ -68,6 +156,8 @@ def _connected_from_name() -> str | None:
         return None
 
     name = found_state.get("name")
+    if found_state.get("connected") is False:
+        return None
     if not isinstance(name, str) or not name:
         return None
     return name

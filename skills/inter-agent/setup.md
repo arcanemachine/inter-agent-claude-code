@@ -43,11 +43,11 @@ repairs the Claude-managed virtual environment at:
 ~/.claude/data/inter-agent/venv
 ```
 
-It installs helper source `inter-agent-claude-code` `0.3.0` from the tagged
-standalone archive selected by plugin release `0.2.6`:
+It installs helper source `inter-agent-claude-code` `0.3.1` from the tagged
+standalone archive selected by plugin release `0.2.7`:
 
 ```text
-https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.6.zip
+https://github.com/arcanemachine/inter-agent-claude-code/archive/refs/tags/v0.2.7.zip
 ```
 
 Core `0.3.0` is installed from PyPI as the helper's exact runtime dependency
@@ -154,20 +154,32 @@ Claude helper package from PyPI.
 
 ## Connect fallback
 
-Try the listener Monitor from `SKILL.md` first and wait for a connected line.
-Do not use `status` or `list` as pre-checks.
+Run `<bin>/inter-agent-claude connect` from `SKILL.md` first; it reports the
+listener Claude Code started for this session. Do not use `status` or `list` as
+pre-checks.
 
-Only if the **listener Monitor** task exits without a connected or
-already-connected line, run one fallback:
+Only if a listener (plugin monitor or fallback Monitor) exits without a
+connected or already-connected line, run one fallback:
 
 ```bash
 <bin>/inter-agent-claude status
 ```
 
 - `connected=true` for your name: this session is already connected; stop.
-- `connected=false`: connect again with a unique name.
+- `connected=false`: run `connect --name <unique-name>`; if it exits `5`, start
+  the fallback Monitor from `SKILL.md`.
 
 Do not manually run `inter-agent-claude listen` in Bash.
+
+## Outdated runtime
+
+A plugin update does not update the managed runtime. If `connect` prints
+`Use '/inter-agent connect'` or `unrecognized arguments`, the helper predates the
+plugin; with explicit user approval, rerun `/inter-agent setup` to install the
+helper this plugin release selects. An explicit helper or `project_path`
+override must be updated by its owner instead. If `connect` reports that the
+running listener `predates in-place rename`, the listener was started before the
+update: run `disconnect`, then `connect` again.
 
 ## Name conflicts
 
@@ -183,11 +195,23 @@ Wait for the connected line under the retried name. If the retry also fails:
 [inter-agent] name "<name>-2" is already in use after retry.
 ```
 
-Then run `<bin>/inter-agent-claude list`, pick a unique name, and reconnect. If
+Then run `<bin>/inter-agent-claude list`, pick a unique name, and run
+`connect --name <unique-name>` (exit `5`: start the fallback Monitor). If
 a listener was killed with `kill -9` instead of `/inter-agent disconnect`, the
 server may hold the name for up to ~40s; wait or choose a unique name.
 
+An in-place rename to a taken name does not retry under a suffix. The listener
+keeps its current name and prints:
+
+```
+[inter-agent] name "<new>" is already in use; keeping "<old>".
+```
+
 ## Listener Monitor wrapper behavior
+
+The plugin may arm one listener per skill-name form (`inter-agent:inter-agent`
+and `inter-agent`). If both arm, the second prints `already connected as
+"<name>"` and exits; that is expected.
 
 Empirically, Claude Code may render the listener Monitor as two task entries: a
 launcher wrapper that exits right after starting the listener (you may see

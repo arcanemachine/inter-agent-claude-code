@@ -18,7 +18,13 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--label")
     listen.add_argument("--session-id")
 
-    sub.add_parser("connect")
+    connect = sub.add_parser("connect")
+    connect.add_argument("--name")
+    connect.add_argument("--wait", type=float, default=commands.CONNECT_TIMEOUT_S)
+
+    rename = sub.add_parser("rename")
+    rename.add_argument("name")
+    rename.add_argument("--wait", type=float, default=commands.CONNECT_TIMEOUT_S)
 
     send = sub.add_parser("send")
     send.add_argument("to")
@@ -76,8 +82,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.session_id:
             listen_args.extend(["--session-id", args.session_id])
         return listen_main(listen_args)
-    if args.command == "connect":
-        return commands.connect(args.name or "claude", args.label)
+    if args.command in ("connect", "rename"):
+        return commands.connect(args.name, args.wait)
     if args.command == "send":
         return commands.send(args.to, args.text, args.from_name)
     if args.command == "broadcast":

@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import os
+import signal
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -17,6 +18,7 @@ from inter_agent_claude.listener import (
     Listener,
     PermanentError,
 )
+from inter_agent_claude.listener import main as listener_main
 
 
 class FakeSession:
@@ -630,8 +632,7 @@ class TestDuplicateListener:
         listener = Listener(host="127.0.0.1", port=12345, name="agent-c", output=out)
 
         assert await listener.run() == 0
-        assert 'already running as "agent-b"' in out.getvalue()
-        assert 'connecting as "agent-c"' in out.getvalue()
+        assert 'already connected as "agent-b"; no new listener started.' in out.getvalue()
 
     @pytest.mark.asyncio
     async def test_duplicate_start_before_state_exists_is_clear(
@@ -866,3 +867,274 @@ class TestKickedTerminal:
         assert call_count == 1  # no reconnect/retry after terminal kick
         # KICKED is not NAME_TAKEN: no suffixed retry is attempted.
         assert "retrying as" not in out.getvalue()
+
+
+@pytest.fixture
+def rename_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("INTER_AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-session")
+    monkeypatch.setattr(state, "_resolve_listener_key", lambda: 123)
+    monkeypatch.setattr(
+        "inter_agent_claude.listener.endpoint_available",
+        lambda h, p: True,
+    )
+
+
+class TestRename:
+    @pytest.mark.asyncio
+    async def test_run_publishes_starting_state_before_connect(self, rename_env: None) -> None:
+        seen: list[dict[str, object] | None] = []
+
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            seen.append(state.read_session_state(ppid))
+            self._stop.set()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+            listener = Listener(host="127.0.0.1", port=12345, name="alpha", output=io.StringIO())
+            assert await listener.run() == 0
+
+        assert seen[0] is not None
+        assert seen[0]["name"] == "alpha"
+        assert seen[0]["connected"] is False
+        assert seen[0]["listener_pid"] == os.getpid()
+
+    @pytest.mark.asyncio
+    async def test_request_rename_reconnects_same_process_under_new_name(
+        self, rename_env: None
+    ) -> None:
+        seen_names: list[str] = []
+
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            seen_names.append(self.name)
+            if len(seen_names) == 1:
+                state.write_persisted_name("beta")
+                self.request_rename()
+                await asyncio.sleep(10)
+            self._stop.set()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+            listener = Listener(host="127.0.0.1", port=12345, name="alpha", output=io.StringIO())
+            assert await listener.run() == 0
+
+        assert seen_names == ["alpha", "beta"]
+        assert listener._renamed_from == "alpha"
+
+    @pytest.mark.asyncio
+    async def test_rename_to_taken_name_keeps_previous_name(self, rename_env: None) -> None:
+        seen_names: list[str] = []
+
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            seen_names.append(self.name)
+            if len(seen_names) == 1:
+                state.write_persisted_name("beta")
+                self.request_rename()
+                await asyncio.sleep(10)
+            if len(seen_names) == 2:
+                raise PermanentError("NAME_TAKEN", "name already in use")
+            self._stop.set()
+
+        out = io.StringIO()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+            listener = Listener(host="127.0.0.1", port=12345, name="alpha", output=out)
+            assert await listener.run() == 0
+
+        assert seen_names == ["alpha", "beta", "alpha"]
+        assert 'name "beta" is already in use; keeping "alpha".' in out.getvalue()
+        assert "retrying as" not in out.getvalue()
+        assert state.read_persisted_name() == "alpha"
+
+    def test_request_rename_ignores_invalid_or_unchanged_name(self, rename_env: None) -> None:
+        listener = Listener(host="127.0.0.1", port=12345, name="alpha")
+        listener.request_rename()
+        assert listener._pending_name is None
+        state.write_persisted_name("alpha")
+        listener.request_rename()
+        assert listener._pending_name is None
+        state.write_persisted_name("Bad Name")
+        listener.request_rename()
+        assert listener._pending_name is None
+
+    @pytest.mark.asyncio
+    async def test_welcome_after_rename_reports_rename(
+        self,
+        rename_env: None,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        patch_session(monkeypatch, [json.dumps({"op": "welcome"})])
+        listener = Listener(host="127.0.0.1", port=12345, name="beta")
+        listener._renamed_from = "alpha"
+        await listener._connect_and_serve(123)
+
+        assert '[inter-agent] renamed "alpha" -> "beta"' in capsys.readouterr().out
+        written = state.read_session_state(123)
+        assert written is not None
+        assert written["name"] == "beta"
+        assert written["connected"] is True
+
+    @pytest.mark.asyncio
+    async def test_request_rename_while_waiting_to_reconnect(self, rename_env: None) -> None:
+        seen_names: list[str] = []
+
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            seen_names.append(self.name)
+            if len(seen_names) == 1:
+                asyncio.get_running_loop().call_soon(self.request_rename)
+                state.write_persisted_name("beta")
+                raise ConnectionRefusedError("down")
+            self._stop.set()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+            mp.setattr("inter_agent_claude.listener.RECONNECT_BACKOFF_MIN_S", 0.01)
+            listener = Listener(host="127.0.0.1", port=12345, name="alpha", output=io.StringIO())
+            assert await listener.run() == 0
+
+        assert seen_names == ["alpha", "beta"]
+
+    @pytest.mark.asyncio
+    async def test_explicit_name_is_remembered_only_by_lock_owner(
+        self, rename_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state.write_persisted_name("alpha")
+        monkeypatch.setattr(state, "acquire_lock", lambda ppid: None)
+        listener = Listener(
+            host="127.0.0.1", port=12345, name="other", output=io.StringIO(), remember_name=True
+        )
+
+        assert await listener.run() == 0
+        assert state.read_persisted_name() == "alpha"
+
+    @pytest.mark.asyncio
+    async def test_explicit_name_is_remembered_after_lock(self, rename_env: None) -> None:
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            assert state.read_persisted_name() == "alpha"
+            self._stop.set()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+            listener = Listener(
+                host="127.0.0.1", port=12345, name="alpha", output=io.StringIO(), remember_name=True
+            )
+            assert await listener.run() == 0
+
+    @pytest.mark.asyncio
+    async def test_reconnect_outlives_deadline_and_restarts_server_once(
+        self, rename_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        attempts = 0
+        starts: list[int] = []
+
+        class FakeProc:
+            pid = 999
+
+            def poll(self) -> int | None:
+                return None
+
+        async def fake_connect_and_serve(self: Listener, ppid: int) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 6:
+                raise ConnectionRefusedError("down")
+            self._stop.set()
+
+        def fake_start_server(self: Listener) -> FakeProc:
+            starts.append(1)
+            return FakeProc()
+
+        available = iter([True] + [False] * 20)
+        monkeypatch.setattr(
+            "inter_agent_claude.listener.endpoint_available",
+            lambda h, p: next(available),
+        )
+        monkeypatch.setattr(Listener, "_connect_and_serve", fake_connect_and_serve)
+        monkeypatch.setattr(Listener, "_start_server", fake_start_server)
+        monkeypatch.setattr("inter_agent_claude.listener.RECONNECT_DEADLINE_S", 0.0)
+        monkeypatch.setattr("inter_agent_claude.listener.RECONNECT_BACKOFF_MIN_S", 0.001)
+        monkeypatch.setattr("inter_agent_claude.listener.RECONNECT_BACKOFF_MAX_S", 0.001)
+
+        out = io.StringIO()
+        listener = Listener(host="127.0.0.1", port=12345, name="alpha", output=out)
+
+        assert await listener.run() == 0
+        assert attempts == 6
+        assert starts == [1]
+        assert "restarted server (pid 999)" in out.getvalue()
+        assert out.getvalue().count("could not reconnect within 0s; still retrying") == 1
+
+
+class TestListenerMainName:
+    @pytest.fixture
+    def captured(self, rename_env: None, monkeypatch: pytest.MonkeyPatch) -> list[Listener]:
+        listeners: list[Listener] = []
+
+        async def fake_run(self: Listener) -> int:
+            listeners.append(self)
+            return 0
+
+        monkeypatch.setattr(Listener, "run", fake_run)
+        return listeners
+
+    def test_explicit_name_is_marked_for_remembering(self, captured: list[Listener]) -> None:
+        assert listener_main(["--name", "alpha", "--port", "12345"]) == 0
+        assert captured[0].name == "alpha"
+        assert captured[0].remember_name is True
+
+    def test_no_name_uses_remembered_name(self, captured: list[Listener]) -> None:
+        state.write_persisted_name("alpha")
+        assert listener_main(["--port", "12345"]) == 0
+        assert captured[0].name == "alpha"
+        assert captured[0].remember_name is False
+
+    def test_auto_name_is_not_remembered(
+        self, captured: list[Listener], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        workdir = tmp_path / "my-project"
+        workdir.mkdir()
+        monkeypatch.chdir(workdir)
+        assert listener_main(["--port", "12345"]) == 0
+        assert captured[0].name == "my-project"
+        assert captured[0].remember_name is False
+
+    def test_invalid_explicit_name_is_rejected(
+        self, captured: list[Listener], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert listener_main(["--name", "Bad Name", "--port", "12345"]) == 2
+        assert captured == []
+        assert "invalid name" in capsys.readouterr().out
+        assert state.read_persisted_name() is None
+
+    def test_name_is_remembered_per_claude_session(
+        self, captured: list[Listener], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state.write_persisted_name("alpha")
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other-session")
+        assert state.read_persisted_name() is None
+
+    def test_main_handles_rename_signal(
+        self, rename_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        handlers: list[bool] = []
+
+        async def fake_run(self: Listener) -> int:
+            loop = asyncio.get_running_loop()
+            handlers.append(signal.SIGUSR1 in getattr(loop, "_signal_handlers", {}))
+            return 0
+
+        monkeypatch.setattr(Listener, "run", fake_run)
+        assert listener_main(["--port", "12345"]) == 0
+        assert handlers == [True]
+
+    def test_old_remembered_names_are_pruned(self, captured: list[Listener]) -> None:
+        state.write_persisted_name("alpha")
+        path = state.persisted_name_path()
+        stale = path.parent / "stale-session"
+        stale.write_text("old\n")
+        os.utime(stale, (0, 0))
+
+        assert listener_main(["--port", "12345"]) == 0
+        assert not stale.exists()
+        assert path.exists()

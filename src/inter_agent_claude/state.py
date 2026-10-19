@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -222,6 +223,98 @@ def delete_session_state(ppid: int) -> None:
         session_path(ppid).unlink()
     except OSError:
         pass
+
+
+PERSISTED_NAME_MAX_AGE_S = 30 * 24 * 60 * 60
+
+
+def listener_alive(pid: object) -> bool:
+    """Return True when `pid` is a live listener process.
+
+    Where /proc exists, the command line must name the listener too, so a
+    recycled PID from a killed listener is not mistaken for a live one.
+    """
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return False
+    except OSError:
+        return False
+    if not Path("/proc/self").exists():
+        return True
+    try:
+        cmdline = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return False
+    argv = [arg.decode("utf-8", "replace") for arg in cmdline.split(b"\0") if arg]
+    return any(
+        os.path.basename(arg) == "inter-agent-claude" and argv[index + 1 : index + 2] == ["listen"]
+        for index, arg in enumerate(argv)
+    )
+
+
+def _name_key() -> str:
+    """Key for this Claude Code session's remembered routing name.
+
+    Prefers the Claude Code session ID, which survives a resumed session;
+    falls back to the host process key.
+    """
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if session_id and all(c.isalnum() or c in "-_" for c in session_id):
+        return session_id
+    return str(_resolve_listener_key())
+
+
+def persisted_name_path() -> Path:
+    """Path to this Claude Code session's remembered routing name."""
+    path = claude_data_dir() / "names"
+    path.mkdir(exist_ok=True)
+    os.chmod(path, 0o700)
+    return path / _name_key()
+
+
+def read_persisted_name() -> str | None:
+    """Return this session's remembered routing name, if any."""
+    try:
+        name = persisted_name_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return name or None
+
+
+def prune_persisted_names() -> None:
+    """Best-effort removal of remembered names unused for 30 days."""
+    try:
+        names_dir = persisted_name_path().parent
+        cutoff = time.time() - PERSISTED_NAME_MAX_AGE_S
+        for entry in names_dir.iterdir():
+            if entry.stat().st_mtime < cutoff:
+                entry.unlink()
+    except OSError:
+        pass
+
+
+def write_persisted_name(name: str) -> None:
+    """Atomically remember `name` as this session's routing name."""
+    path = persisted_name_path()
+    fd, tmp_path_str = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, (name + "\n").encode("utf-8"))
+        os.close(fd)
+        os.replace(tmp_path_str, path)
+    except OSError:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp_path_str)
+        except OSError:
+            pass
+        raise
 
 
 def acquire_lock(ppid: int) -> int | None:

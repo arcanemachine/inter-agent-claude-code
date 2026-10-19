@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import time
 from pathlib import Path
 
 import inter_agent.core.adapter_control as control
@@ -886,3 +889,229 @@ def test_kick_does_not_require_connected_listener(
 
     assert commands.kick("x") == 0
     assert json.loads(capsys.readouterr().out)["op"] == "kick_ok"
+
+
+@pytest.fixture
+def connect_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-session")
+    monkeypatch.setattr(state, "_resolve_listener_key", lambda: 123)
+    monkeypatch.setattr(commands, "CONNECT_START_GRACE_S", 0.2)
+    monkeypatch.setattr(commands, "CONNECT_POLL_S", 0.01)
+    monkeypatch.setattr(state, "listener_alive", lambda pid: pid == os.getpid())
+
+
+def write_listener_state(
+    name: str, connected: bool = True, pid: int | None = None, legacy: bool = False
+) -> None:
+    listener_state: dict[str, object] = {
+        "session_id": "sid",
+        "nonce": "n",
+        "name": name,
+        "listener_pid": os.getpid() if pid is None else pid,
+    }
+    if not legacy:
+        listener_state["connected"] = connected
+        listener_state["rename_signal"] = "SIGUSR1"
+    state.write_session_state(123, listener_state)
+
+
+def test_connect_without_listener_saves_name_and_exits_5(
+    connect_env: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = run_claude(["connect", "--name", "alpha"], capsys)
+
+    assert result.code == 5
+    assert "no listener is running in this session (name saved)" in result.stderr
+    assert state.read_persisted_name() == "alpha"
+
+
+def test_connect_ignores_state_of_dead_listener(
+    connect_env: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha", pid=2**22 + 12345)
+
+    assert run_claude(["connect"], capsys).code == 5
+
+
+def test_connect_rejects_invalid_name(
+    connect_env: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = run_claude(["connect", "--name", "Bad Name"], capsys)
+
+    assert result.code == 2
+    assert "invalid name" in result.stderr
+    assert state.read_persisted_name() is None
+
+
+def test_connect_reports_running_listener(
+    connect_env: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha")
+
+    result = run_claude(["connect"], capsys)
+
+    assert result.code == 0
+    assert result.stdout == 'connected as "alpha"\n'
+
+
+def test_connect_same_name_does_not_signal(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha")
+    monkeypatch.setattr(os, "kill", lambda pid, sig: pytest.fail("unexpected signal"))
+
+    result = run_claude(["connect", "--name", "alpha"], capsys)
+
+    assert result.code == 0
+    assert result.stdout == 'connected as "alpha"\n'
+
+
+def test_connect_waits_for_starting_listener(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha", connected=False)
+    real_sleep = time.sleep
+    calls = 0
+
+    def fake_sleep(seconds: float) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            write_listener_state("alpha")
+        real_sleep(0)
+
+    monkeypatch.setattr(time, "sleep", fake_sleep)
+
+    result = run_claude(["connect"], capsys)
+
+    assert result.code == 0
+    assert result.stdout == 'connected as "alpha"\n'
+
+
+def test_rename_signals_listener_and_reports_new_name(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha")
+    signals: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        signals.append((pid, sig))
+        assert state.read_persisted_name() == "beta"
+        write_listener_state("beta")
+
+    monkeypatch.setattr(os, "kill", fake_kill)
+
+    result = run_claude(["rename", "beta"], capsys)
+
+    assert result.code == 0
+    assert result.stdout == 'renamed "alpha" -> "beta"\n'
+    assert signals == [(os.getpid(), signal.SIGUSR1)]
+
+
+def test_rename_rejected_by_listener_reports_name_in_use(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha")
+
+    def fake_kill(pid: int, sig: int) -> None:
+        state.write_persisted_name("alpha")
+
+    monkeypatch.setattr(os, "kill", fake_kill)
+
+    result = run_claude(["connect", "--name", "beta"], capsys)
+
+    assert result.code == 1
+    assert 'name "beta" is already in use; still connected as "alpha"' in result.stderr
+
+
+def test_connect_times_out_when_listener_never_connects(
+    connect_env: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha", connected=False)
+
+    result = run_claude(["connect", "--wait", "0.1"], capsys)
+
+    assert result.code == 1
+    assert "listener did not connect within" in result.stderr
+
+
+def test_starting_listener_is_not_a_sender(connect_env: None) -> None:
+    write_listener_state("alpha", connected=False)
+    fd = state.acquire_lock(123)
+    try:
+        assert commands._connected_from_name() is None
+    finally:
+        assert fd is not None
+        state.release_lock(fd)
+
+
+def test_connect_renames_listener_once_it_finishes_starting(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("workspace", connected=False)
+    signals: list[int] = []
+    real_sleep = time.sleep
+    calls = 0
+
+    def fake_sleep(seconds: float) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            write_listener_state("workspace")
+        real_sleep(0)
+
+    def fake_kill(pid: int, sig: int) -> None:
+        signals.append(sig)
+        write_listener_state("beta")
+
+    monkeypatch.setattr(time, "sleep", fake_sleep)
+    monkeypatch.setattr(os, "kill", fake_kill)
+
+    result = run_claude(["connect", "--name", "beta"], capsys)
+
+    assert result.code == 0
+    assert result.stdout == 'renamed "workspace" -> "beta"\n'
+    assert signals == [signal.SIGUSR1]
+    assert calls >= 3
+
+
+def test_connect_never_signals_listener_without_rename_support(
+    connect_env: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_listener_state("alpha", legacy=True)
+    monkeypatch.setattr(os, "kill", lambda pid, sig: pytest.fail("unexpected signal"))
+
+    result = run_claude(["connect", "--name", "beta"], capsys)
+
+    assert result.code == 1
+    assert "predates in-place rename; run disconnect, then connect again" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("cmdline", "alive"),
+    [
+        (b"/venv/bin/python\0/venv/bin/inter-agent-claude\0listen\0", True),
+        (b"/venv/bin/python\0/venv/bin/inter-agent-claude\0listen\0--name\0a\0", True),
+        (b"python\0-m\0pytest\0/src/inter-agent-claude/tests/test_listen.py\0", False),
+        (b"/venv/bin/python\0/venv/bin/inter-agent-claude\0send\0listen\0hi\0", False),
+        (b"/usr/bin/vim\0", False),
+    ],
+)
+def test_listener_alive_requires_listener_command_line(
+    monkeypatch: pytest.MonkeyPatch, cmdline: bytes, alive: bool
+) -> None:
+    real_read_bytes = Path.read_bytes
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self.name == "cmdline":
+            return cmdline
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+    assert state.listener_alive(os.getpid()) is alive
+
+
+def test_listener_alive_rejects_non_pids() -> None:
+    assert state.listener_alive(None) is False
+    assert state.listener_alive(True) is False
+    assert state.listener_alive(0) is False

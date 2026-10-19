@@ -1,0 +1,14 @@
+[
+  {
+    "name": "listener",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/inter-agent/bin/inter-agent-claude\" listen",
+    "description": "inter-agent bus messages",
+    "when": "on-skill-invoke:inter-agent:inter-agent"
+  },
+  {
+    "name": "listener-bare-skill-name",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}/skills/inter-agent/bin/inter-agent-claude\" listen",
+    "description": "inter-agent bus messages",
+    "when": "on-skill-invoke:inter-agent"
+  }
+]

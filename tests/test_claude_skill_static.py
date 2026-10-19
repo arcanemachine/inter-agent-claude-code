@@ -31,7 +31,7 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     assert "/inter-agent bootstrap" not in skill
     assert "CLAUDE_PLUGIN_OPTION_PROJECT_PATH" in setup
     assert "~/.claude/data/inter-agent/venv" in setup
-    assert "refs/tags/v0.2.6.zip" in setup
+    assert "refs/tags/v0.2.7.zip" in setup
     assert "INTER_AGENT_CLAUDE_SETUP_SOURCE" in setup
     assert "INTER_AGENT_CLAUDE_BOOTSTRAP_SOURCE" not in setup
     assert "--source" in setup
@@ -40,24 +40,36 @@ def test_claude_skill_references_setup_and_doctor_guidance() -> None:
     assert "cannot be established" in doctor
 
 
-def test_claude_skill_monitor_has_deadline_fallback_and_expiry_recovery() -> None:
+def test_claude_skill_names_plugin_listener_instead_of_arming_monitor() -> None:
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    prose = " ".join(skill.split())
+
+    assert "<bin>/inter-agent-claude connect --name <name>" in skill
+    assert "Claude Code itself starts the listener" in prose
+    assert "renames a running listener in place without stopping it" in prose
+    assert "`5` — no listener runs in this session" in prose
+    assert "Claude Code starts the plugin monitor only once per session" in prose
+    assert "TaskStop" not in skill
+    assert '--name <name>",\n' not in skill
+
+
+def test_claude_skill_fallback_monitor_has_deadline_and_expiry_recovery() -> None:
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    prose = " ".join(skill.split())
 
     assert (
         "Monitor(\n"
-        '  command="<bin>/inter-agent-claude listen --name <name>",\n'
+        '  command="<bin>/inter-agent-claude listen",\n'
         '  description="inter-agent bus messages",\n'
         "  persistent=true,\n"
-        "  timeout_ms=2147483647\n"
+        "  timeout_ms=3600000\n"
         ")" in skill
     )
-    assert "When Monitor reports `timeout_ms must be ≤ ...`, retry once" in skill
-    assert "using `timeout_ms=3600000`" in skill
-    assert "When a `[Monitor expired ...]` notice arrives for `inter-agent bus messages`" in skill
-    assert "restart the listener immediately with the same Monitor call and name" in skill
-    assert "Do not report the expiry to the user or treat it as a failure." in " ".join(
-        skill.split()
-    )
+    assert "Only after `connect` exits `5`. Pass no `--name`" in prose
+    assert "30 minutes on stock Claude Code" in prose
+    assert "start the same fallback Monitor again immediately" in prose
+    assert "Do not report the expiry to the user or treat it as a failure." in prose
+    assert "retry once without `persistent` and with `timeout_ms=1800000`" in prose
 
 
 def test_claude_skill_centralizes_user_only_and_output_policy() -> None:
@@ -84,7 +96,7 @@ def test_claude_skill_centralizes_user_only_and_output_policy() -> None:
     assert "Preserve successful helper output verbatim" in policy
     assert "including `send` and `broadcast`" in policy
     assert "do not poll, re-list, re-check status, or send a follow-up" in policy_prose
-    assert "explicit rename workflow" in policy_prose
+    assert "starting the fallback Monitor after `connect` exits `5`" in policy_prose
 
 
 def test_claude_skill_send_output_and_no_probe_contract() -> None:

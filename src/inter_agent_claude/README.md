@@ -16,7 +16,9 @@ overrides.
 
 Run Claude adapter commands through the installed package entry point:
 
-- `inter-agent-claude listen --name <name> [--label <label>]`
+- `inter-agent-claude listen [--name <name>] [--label <label>]`
+- `inter-agent-claude connect [--name <name>] [--wait <seconds>]`
+- `inter-agent-claude rename <name> [--wait <seconds>]`
 - `inter-agent-claude send <to> <text>`
 - `inter-agent-claude broadcast <text>`
 - `inter-agent-claude subscribe <channel>`
@@ -140,12 +142,32 @@ fallback token. It is not a strictly read-only statusline API. Adapter files
 under `<data_dir>/claude-sessions/`, including their filenames and JSON fields,
 are internal implementation details and are not stable external interfaces.
 
+## Listener naming
+
+`listen` without `--name` uses the name remembered for this Claude Code session
+(keyed by `CLAUDE_CODE_SESSION_ID`), else derives one from the working
+directory. `listen --name` remembers its name; a derived name is never
+remembered.
+
+`connect --name <name>` (and its alias `rename <name>`) remembers the name, then
+sends the running listener `SIGUSR1`. The listener reconnects under the new name
+without exiting, keeps its channel subscriptions, and prints
+`[inter-agent] renamed "<old>" -> "<new>"`. If the name is taken it keeps the
+old name. Without `--name`, `connect` reports the listener's current name.
+`connect` waits up to `--wait` seconds (default 30) for a listener that is still
+starting. Exit codes: `0` connected or renamed; `1` rejected or timed out; `2`
+invalid name; `5` no listener runs in this session.
+
 ## Permanent errors
 
 The listener exits without reconnecting on permanent errors: `AUTH_FAILED`,
 `BAD_ROLE`, `BAD_NAME`, `BAD_SESSION`, `SESSION_TAKEN`, `BAD_LABEL`,
 `TOO_MANY_CONNECTIONS`. On `NAME_TAKEN`, the Claude listener retries once with a
-`-2` suffix and exits only if that retry is also taken. Transient errors trigger
-reconnection with bounded backoff. A `KICKED` error is terminal: the listener
-stops reconnecting for its process and the removed name is immediately free for
-an explicit later reconnect.
+`-2` suffix and exits only if that retry is also taken. A rejected in-place
+rename does not use the suffix and never exits; the listener keeps its old name.
+Transient errors trigger reconnection with capped backoff that never gives up,
+because a plugin-monitor listener cannot be restarted in the same session; after
+60 seconds it prints one `still retrying` line, and if the local endpoint is
+down it restarts the auto-started server once per outage. A `KICKED` error is
+terminal: the listener stops reconnecting for its process and the removed name
+is immediately free for an explicit later reconnect.
